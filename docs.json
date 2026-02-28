@@ -76,7 +76,8 @@
             "pages": [
               "api/client",
               "api/arbiter",
-              "api/config"
+              "api/config",
+              "api/exceptions"
             ]
           },
           {

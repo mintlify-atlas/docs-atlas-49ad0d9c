@@ -213,7 +213,7 @@ Modaic includes built-in support for batch inference:
 ```python
 import asyncio
 import dspy
-from modaic.batch.batch import abatch
+from modaic.batch import abatch
 
 async def main():
     # Configure DSPy
@@ -252,19 +252,19 @@ asyncio.run(main())
 Now that you've built your first Modaic program, explore more advanced features:
 
 <CardGroup cols={2}>
-  <Card title="Configuration" icon="sliders" href="/configuration">
+  <Card title="Configuration" icon="sliders" href="/concepts/configuration">
     Learn about advanced configuration options
   </Card>
   
-  <Card title="Hub guide" icon="cloud" href="/hub">
+  <Card title="Hub operations" icon="cloud" href="/concepts/hub-operations">
     Deep dive into hub features and versioning
   </Card>
   
-  <Card title="Retrievers" icon="database" href="/retrievers">
-    Add retrieval-augmented generation to your programs
+  <Card title="Creating programs" icon="code" href="/guides/creating-programs">
+    Build advanced programs with retrievers and indexers
   </Card>
   
-  <Card title="API reference" icon="code" href="/api-reference">
+  <Card title="API reference" icon="code" href="/api/precompiled">
     Explore the complete API documentation
   </Card>
 </CardGroup>

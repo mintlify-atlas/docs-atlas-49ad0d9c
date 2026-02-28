@@ -1,0 +1,296 @@
+---
+title: Exceptions
+description: Exception classes for error handling in Modaic
+---
+
+The Modaic SDK provides a hierarchy of exception classes for handling errors that occur during hub operations, authentication, and program loading.
+
+## Exception Hierarchy
+
+All Modaic exceptions inherit from `ModaicError`, which itself inherits from Python's base `Exception` class:
+
+```
+Exception
+└── ModaicError
+    ├── ModaicHubError
+    │   ├── RevisionNotFoundError
+    │   ├── RepositoryExistsError
+    │   ├── RepositoryNotFoundError
+    │   └── AuthenticationError
+    │       └── MissingSecretError
+    ├── SchemaError
+    └── BackendCompatibilityError
+```
+
+## Base Exceptions
+
+### ModaicError
+
+```python
+class ModaicError(Exception):
+    pass
+```
+
+Base exception for all Modaic-related errors. Catch this to handle any error from the Modaic SDK.
+
+### Example
+
+```python
+from modaic import AutoProgram
+from modaic.exceptions import ModaicError
+
+try:
+    program = AutoProgram.from_precompiled("username/my-program")
+except ModaicError as e:
+    print(f"Modaic error occurred: {e}")
+```
+
+---
+
+## Hub Exceptions
+
+### ModaicHubError
+
+```python
+class ModaicHubError(ModaicError):
+    pass
+```
+
+Base class for all hub-related errors. Raised when operations involving the Modaic Hub fail.
+
+### RevisionNotFoundError
+
+```python
+class RevisionNotFoundError(ModaicHubError):
+    message: str
+    rev: str
+```
+
+Raised when a specified revision (branch, tag, or commit) is not found in a repository.
+
+<ParamField path="message" type="str">
+  Error message describing what revision was not found.
+</ParamField>
+
+<ParamField path="rev" type="str">
+  The revision string that was not found.
+</ParamField>
+
+### Example
+
+```python
+from modaic import AutoProgram
+from modaic.exceptions import RevisionNotFoundError
+
+try:
+    program = AutoProgram.from_precompiled("username/my-program", rev="v99.0.0")
+except RevisionNotFoundError as e:
+    print(f"Revision '{e.rev}' not found: {e.message}")
+```
+
+### RepositoryExistsError
+
+```python
+class RepositoryExistsError(ModaicHubError):
+    pass
+```
+
+Raised when attempting to create a repository that already exists on the hub.
+
+### Example
+
+```python
+from modaic import PrecompiledProgram
+from modaic.exceptions import RepositoryExistsError
+
+try:
+    program.push_to_hub("username/my-program")
+except RepositoryExistsError:
+    print("Repository already exists. Use a different name or delete the existing one.")
+```
+
+### RepositoryNotFoundError
+
+```python
+class RepositoryNotFoundError(ModaicHubError):
+    pass
+```
+
+Raised when attempting to access a repository that doesn't exist on the hub.
+
+### Example
+
+```python
+from modaic import AutoProgram
+from modaic.exceptions import RepositoryNotFoundError
+
+try:
+    program = AutoProgram.from_precompiled("username/nonexistent-program")
+except RepositoryNotFoundError:
+    print("Repository not found. Check the repository name and make sure it exists.")
+```
+
+### AuthenticationError
+
+```python
+class AuthenticationError(ModaicHubError):
+    pass
+```
+
+Raised when authentication with the Modaic Hub fails. This typically occurs when the token is invalid or missing.
+
+### Example
+
+```python
+from modaic import PrecompiledProgram
+from modaic.exceptions import AuthenticationError
+
+try:
+    program.push_to_hub("username/my-program")
+except AuthenticationError:
+    print("Authentication failed. Check your MODAIC_TOKEN environment variable.")
+```
+
+### MissingSecretError
+
+```python
+class MissingSecretError(AuthenticationError):
+    message: str
+    secret_name: str
+```
+
+Raised when a required secret (like an API key) is missing from the program configuration.
+
+<ParamField path="message" type="str">
+  Error message describing what secret is missing.
+</ParamField>
+
+<ParamField path="secret_name" type="str">
+  The name of the missing secret.
+</ParamField>
+
+### Example
+
+```python
+from modaic import AutoProgram
+from modaic.exceptions import MissingSecretError
+
+try:
+    program = AutoProgram.from_precompiled("username/my-program")
+    result = program(query="test")
+except MissingSecretError as e:
+    print(f"Secret '{e.secret_name}' is required but not set: {e.message}")
+```
+
+---
+
+## Other Exceptions
+
+### SchemaError
+
+```python
+class SchemaError(ModaicError):
+    pass
+```
+
+Raised when a schema validation fails, typically when loading a program with an invalid configuration schema.
+
+### Example
+
+```python
+from modaic import AutoConfig
+from modaic.exceptions import SchemaError
+
+try:
+    config = AutoConfig.from_precompiled("username/my-program")
+except SchemaError as e:
+    print(f"Invalid schema: {e}")
+```
+
+### BackendCompatibilityError
+
+```python
+class BackendCompatibilityError(ModaicError):
+    pass
+```
+
+Raised when a feature is not supported by the current backend or environment.
+
+### Example
+
+```python
+from modaic import PrecompiledProgram
+from modaic.exceptions import BackendCompatibilityError
+
+try:
+    program.some_advanced_feature()
+except BackendCompatibilityError as e:
+    print(f"Feature not supported: {e}")
+```
+
+---
+
+## Best Practices
+
+### Specific Exception Handling
+
+Catch specific exceptions when you know how to handle them:
+
+```python
+from modaic import AutoProgram
+from modaic.exceptions import (
+    AuthenticationError,
+    RepositoryNotFoundError,
+    RevisionNotFoundError
+)
+
+try:
+    program = AutoProgram.from_precompiled("username/my-program", rev="v1.0.0")
+except AuthenticationError:
+    print("Please set MODAIC_TOKEN environment variable")
+except RepositoryNotFoundError:
+    print("Repository not found. Check the name.")
+except RevisionNotFoundError as e:
+    print(f"Version {e.rev} not found. Try 'main' branch.")
+```
+
+### Generic Exception Handling
+
+Catch `ModaicError` for general error handling:
+
+```python
+from modaic import AutoProgram
+from modaic.exceptions import ModaicError
+
+try:
+    program = AutoProgram.from_precompiled("username/my-program")
+    result = program(query="test")
+except ModaicError as e:
+    # Log the error and use a fallback
+    print(f"Modaic operation failed: {e}")
+    result = use_fallback_logic()
+```
+
+### Retry Logic
+
+Implement retry logic for transient errors:
+
+```python
+import time
+from modaic import AutoProgram
+from modaic.exceptions import ModaicHubError, AuthenticationError
+
+def load_program_with_retry(repo_path, max_retries=3):
+    for attempt in range(max_retries):
+        try:
+            return AutoProgram.from_precompiled(repo_path)
+        except AuthenticationError:
+            # Don't retry authentication errors
+            raise
+        except ModaicHubError as e:
+            if attempt < max_retries - 1:
+                print(f"Attempt {attempt + 1} failed, retrying...")
+                time.sleep(2 ** attempt)  # Exponential backoff
+            else:
+                raise
+```

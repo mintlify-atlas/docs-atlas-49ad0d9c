@@ -181,6 +181,52 @@ print(f"Results: {len(response.results)}")
 
 ---
 
+## aget_batch_status
+
+```python
+async def aget_batch_status(
+    batch_id: str,
+    provider: str,
+    api_key: Optional[str] = None
+) -> Tuple[str, Optional[int]]
+```
+
+Get the current status and progress of a batch job.
+
+<ParamField path="batch_id" type="str" required>
+  The batch ID to check status for.
+</ParamField>
+
+<ParamField path="provider" type="str" required>
+  The provider name (e.g., "openai", "together_ai", "fireworks_ai", "azure", "anthropic").
+</ParamField>
+
+<ParamField path="api_key" type="str">
+  Optional API key for the provider. If not provided, will use environment variables.
+</ParamField>
+
+<ResponseField name="return" type="Tuple[str, Optional[int]]">
+  A tuple containing:
+  - `status`: The current status string (e.g., "completed", "in_progress", "failed")
+  - `progress`: Optional progress percentage (0-100) if available
+</ResponseField>
+
+### Example
+
+```python
+from modaic.batch import aget_batch_status
+
+status, progress = await aget_batch_status(
+    batch_id="batch_abc123",
+    provider="openai"
+)
+print(f"Status: {status}")
+if progress is not None:
+    print(f"Progress: {progress}%")
+```
+
+---
+
 ## acancel_batch
 
 ```python
@@ -253,3 +299,93 @@ if supports_abatch(lm):
 if supports_abatch("openai/gpt-4o-mini"):
     print("OpenAI GPT-4o-mini supports batching")
 ```
+
+---
+
+## Types
+
+### FailedPrediction
+
+```python
+@dataclass
+class FailedPrediction:
+    error: str
+    index: int
+```
+
+Represents a failed prediction in a batch result. When a prediction fails during batch processing, a `FailedPrediction` object is returned instead of a normal `dspy.Prediction`.
+
+<ParamField path="error" type="str">
+  The error message describing why the prediction failed.
+</ParamField>
+
+<ParamField path="index" type="int">
+  The original index of this prediction in the input list.
+</ParamField>
+
+### Example
+
+```python
+from modaic.batch import abatch, FailedPrediction
+
+results = await abatch(predictor, inputs)
+
+for i, result in enumerate(results):
+    if isinstance(result.prediction, FailedPrediction):
+        print(f"Prediction {i} failed: {result.prediction.error}")
+        print(f"Original index: {result.prediction.index}")
+    else:
+        print(f"Prediction {i} succeeded: {result.prediction}")
+```
+
+### ABatchResult
+
+```python
+class ABatchResult(BaseModel):
+    prediction: dspy.Prediction | FailedPrediction
+    messages: list[Message]
+```
+
+The result object returned for each input in a batch request.
+
+<ResponseField name="prediction" type="dspy.Prediction | FailedPrediction">
+  Either a successful `dspy.Prediction` or a `FailedPrediction` if processing failed.
+</ResponseField>
+
+<ResponseField name="messages" type="list[Message]">
+  The formatted messages that were sent to the API for this request.
+</ResponseField>
+
+### BatchReponse
+
+```python
+@dataclass
+class BatchReponse:
+    batch_id: str
+    status: str
+    results: list[dict[str, Any]]
+    errors: Optional[list[dict]] = None
+    raw_response: Optional[str | dict] = None
+```
+
+The raw response from a batch API call, returned by `aget_batch_results`.
+
+<ResponseField name="batch_id" type="str">
+  The batch job ID.
+</ResponseField>
+
+<ResponseField name="status" type="str">
+  Current status of the batch (e.g., "completed", "in_progress", "failed").
+</ResponseField>
+
+<ResponseField name="results" type="list[dict[str, Any]]">
+  Raw results from the provider's batch API.
+</ResponseField>
+
+<ResponseField name="errors" type="Optional[list[dict]]">
+  List of errors if any occurred during processing.
+</ResponseField>
+
+<ResponseField name="raw_response" type="Optional[str | dict]">
+  The raw API response for debugging purposes.
+</ResponseField>
