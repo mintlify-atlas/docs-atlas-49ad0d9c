@@ -1,0 +1,293 @@
+---
+title: Loading Programs
+description: Load PrecompiledProgram instances from local directories and Modaic Hub
+---
+
+## Overview
+
+Modaic provides flexible ways to load programs:
+
+1. **Class-specific loading** - Use `YourProgram.from_precompiled()`
+2. **Dynamic loading** - Use `AutoProgram.from_precompiled()` to load any program
+3. **Local or remote** - Load from local directories or Modaic Hub
+
+## Loading with Class-Specific Methods
+
+<Steps>
+  <Step title="Define Your Program Class">
+    First, ensure you have your program class defined:
+
+    ```python
+    from modaic.precompiled import PrecompiledProgram, PrecompiledConfig
+    import dspy
+
+    class MyConfig(PrecompiledConfig):
+        temperature: float = 0.7
+
+    class MyProgram(PrecompiledProgram):
+        config: MyConfig
+
+        def __init__(self, config: MyConfig, **kwargs):
+            super().__init__(config, **kwargs)
+            self.predictor = dspy.Predict("question -> answer")
+    ```
+  </Step>
+
+  <Step title="Load from Local Path">
+    Load a saved program from a local directory:
+
+    ```python
+    program = MyProgram.from_precompiled(
+        "./my-program",
+        api_key="your-api-key"  # Optional: override secrets
+    )
+
+    result = program(question="What is DSPy?")
+    ```
+
+    <Note>
+    Local paths must start with `./`, `/`, or `../` to be recognized as local.
+    </Note>
+  </Step>
+
+  <Step title="Load from Hub">
+    Load a program from Modaic Hub using `user/repo` format:
+
+    ```python
+    program = MyProgram.from_precompiled(
+        "username/my-program",
+        access_token="your-modaic-token",
+        api_key="your-lm-api-key"
+    )
+    ```
+  </Step>
+</Steps>
+
+## Dynamic Loading with AutoProgram
+
+`AutoProgram` automatically discovers and loads the correct program class without needing to import it:
+
+```python
+from modaic.auto import AutoProgram
+
+# Load from hub - automatically detects program class
+program = AutoProgram.from_precompiled(
+    "username/my-program",
+    access_token="your-modaic-token",
+    api_key="your-api-key"
+)
+
+# Load from local path
+program = AutoProgram.from_precompiled(
+    "./my-program",
+    api_key="your-api-key"
+)
+```
+
+<Warning>
+`AutoProgram` requires the program to be saved with `with_code=True` (includes `auto_classes.json`). See auto.py:217-219.
+</Warning>
+
+## Loading Specific Revisions
+
+Load specific branches, tags, or commits:
+
+```python
+# Load specific branch
+program = MyProgram.from_precompiled(
+    "username/my-program",
+    rev="development",
+    access_token="token"
+)
+
+# Load specific tag
+program = MyProgram.from_precompiled(
+    "username/my-program",
+    rev="v1.0.0",
+    access_token="token"
+)
+
+# Load specific commit
+program = MyProgram.from_precompiled(
+    "username/my-program",
+    rev="abc123def456",
+    access_token="token"
+)
+```
+
+The default revision is `"main"`.
+
+## Overriding Configuration
+
+You can override config values when loading:
+
+```python
+# Override config parameters
+program = MyProgram.from_precompiled(
+    "./my-program",
+    config={"temperature": 0.9, "max_tokens": 500}
+)
+```
+
+You can also pass the config as a full object:
+
+```python
+config = MyConfig(temperature=0.9)
+program = MyProgram.from_precompiled(
+    "./my-program",
+    config=config
+)
+```
+
+## Handling Secrets and API Keys
+
+### Single API Key
+
+Provide a single API key for all predictors:
+
+```python
+program = MyProgram.from_precompiled(
+    "./my-program",
+    api_key="sk-..."
+)
+```
+
+### Per-Predictor API Keys
+
+Provide different keys for named predictors:
+
+```python
+program = MyProgram.from_precompiled(
+    "./my-program",
+    api_key={
+        "my_program.predictor": "sk-key-1",
+        "my_program.summarizer": "sk-key-2"
+    }
+)
+```
+
+### Hugging Face Tokens
+
+For models requiring HuggingFace access:
+
+```python
+program = MyProgram.from_precompiled(
+    "./my-program",
+    hf_token="hf_..."
+)
+```
+
+<Note>
+Secrets are validated when loading. If a masked secret (like `********`) is found in `program.json`, you must provide the actual value. See precompiled.py:564-612.
+</Note>
+
+## Loading Retrievers
+
+Load retrievers independently or as part of a program:
+
+```python
+from modaic.auto import AutoRetriever
+
+# Load retriever directly
+retriever = AutoRetriever.from_precompiled(
+    "username/my-retriever",
+    config={"num_fetch": 10}
+)
+
+# Use with class-specific loading
+from my_module import MyRetriever
+
+retriever = MyRetriever.from_precompiled(
+    "./my-retriever",
+    config={"embedder": "openai/text-embedding-3-small"}
+)
+```
+
+## Local Path Detection
+
+Modaic determines if a path is local or a hub path:
+
+| Path Format | Type | Example |
+|-------------|------|--------|
+| `./path` | Local | `./my-program` |
+| `/absolute` | Local | `/home/user/program` |
+| `../relative` | Local | `../shared/program` |
+| `user/repo` | Hub | `john/sentiment-classifier` |
+| `repo` | Error | Must use `./repo` or `user/repo` |
+
+<Tip>
+Always prefix local paths with `./`, `/`, or `../` to avoid ambiguity. See precompiled.py:513-529.
+</Tip>
+
+## Caching Behavior
+
+Hub programs are cached locally:
+
+```python
+# First load: downloads from hub
+program1 = AutoProgram.from_precompiled("user/repo")
+
+# Second load: uses cached version
+program2 = AutoProgram.from_precompiled("user/repo")
+
+# Force fresh download with specific revision
+program3 = AutoProgram.from_precompiled("user/repo", rev="main")
+```
+
+Cache location: `~/.cache/modaic/modaic_hub/user/repo/revision/`
+
+## Complete Example
+
+```python
+import dspy
+from modaic.auto import AutoProgram
+
+# Configure DSPy
+dspy.configure(lm=dspy.LM("openai/gpt-4o-mini"))
+
+# Load program from hub
+program = AutoProgram.from_precompiled(
+    "modaic-ai/sentiment-classifier",
+    access_token="your-token",
+    api_key="your-openai-key",
+    config={"temperature": 0.5}
+)
+
+# Use the program
+result = program(text="I love this framework!")
+print(result.sentiment)
+```
+
+## Troubleshooting
+
+### FileNotFoundError: auto_classes.json not found
+
+The program wasn't saved with code. Use class-specific loading or re-push with `with_code=True`:
+
+```python
+program.push_to_hub("user/repo", with_code=True)
+```
+
+### MissingSecretError
+
+Provide the required API key:
+
+```python
+program = MyProgram.from_precompiled(
+    "./program",
+    api_key="your-key-here"
+)
+```
+
+### Repository not found
+
+Verify:
+- The repo path is correct (`user/repo` format)
+- You have access (provide `access_token` for private repos)
+- The repo exists on Modaic Hub
+
+## Next Steps
+
+- Learn about [bundling and sharing](/guides/bundling-and-sharing) programs
+- Explore [batch processing](/guides/batch-processing) for efficient inference
+- Set up [observability](/guides/observability) tracking

@@ -1,0 +1,449 @@
+---
+title: Configuration
+description: Manage program settings and environment configuration with Modaic's configuration system
+---
+
+Modaic provides a flexible configuration system that separates program settings from code, making it easy to version control your program behavior and adapt programs to different environments.
+
+## Program configuration
+
+Program configuration is managed through `PrecompiledConfig`, a Pydantic-based model that defines your program's settings.
+
+### Creating a configuration class
+
+Extend `PrecompiledConfig` to define your configuration schema:
+
+```python
+from modaic import PrecompiledConfig
+from pydantic import Field
+
+class MyConfig(PrecompiledConfig):
+    # Basic types with defaults
+    temperature: float = 0.7
+    max_tokens: int = 1000
+    
+    # With validation and description
+    top_k: int = Field(default=10, ge=1, le=100, description="Number of results to return")
+    
+    # Optional fields
+    system_prompt: str | None = None
+    
+    # Complex types
+    keywords: list[str] = ["AI", "machine learning"]
+    model_config: dict[str, any] = {"model": "gpt-4", "provider": "openai"}
+```
+
+<Info>
+Use all of Pydantic's validation features including Field validators, constraints, and custom validation methods.
+</Info>
+
+### Using configuration in programs
+
+Access configuration values in your program:
+
+```python
+from modaic import PrecompiledProgram
+import dspy
+
+class MyProgram(PrecompiledProgram):
+    config: MyConfig
+    
+    def __init__(self, config: MyConfig = None, **kwargs):
+        super().__init__(config, **kwargs)
+        
+        # Use config values
+        self.predictor = dspy.Predict(
+            "question -> answer",
+            temperature=self.config.temperature,
+            max_tokens=self.config.max_tokens
+        )
+    
+    def forward(self, question: str):
+        if self.config.system_prompt:
+            question = f"{self.config.system_prompt}\n{question}"
+        return self.predictor(question=question)
+```
+
+### Configuration initialization
+
+<Tabs>
+  <Tab title="Default values">
+    Use default values from the class definition:
+    
+    ```python
+    program = MyProgram()  # Uses all defaults
+    ```
+  </Tab>
+  
+  <Tab title="Config object">
+    Pass a configuration object:
+    
+    ```python
+    config = MyConfig(temperature=0.9, max_tokens=2000)
+    program = MyProgram(config=config)
+    ```
+  </Tab>
+  
+  <Tab title="Dictionary">
+    Pass configuration as a dictionary:
+    
+    ```python
+    program = MyProgram(config={
+        "temperature": 0.9,
+        "max_tokens": 2000
+    })
+    ```
+  </Tab>
+  
+  <Tab title="Keyword arguments">
+    Override values when loading:
+    
+    ```python
+    program = MyProgram.from_precompiled(
+        "./my_program",
+        config={"temperature": 0.9}  # Override saved value
+    )
+    ```
+  </Tab>
+</Tabs>
+
+## Configuration persistence
+
+Configuration is automatically saved and loaded with your program.
+
+### Save configuration
+
+When you save a program, its configuration is saved to `config.json`:
+
+```python
+program = MyProgram(config=MyConfig(temperature=0.8))
+program.save_precompiled("./my_program")
+
+# Creates:
+# ./my_program/config.json
+# ./my_program/program.json
+```
+
+The `config.json` file contains:
+
+```json
+{
+  "temperature": 0.8,
+  "max_tokens": 1000,
+  "top_k": 10,
+  "system_prompt": null,
+  "keywords": ["AI", "machine learning"],
+  "model_config": {"model": "gpt-4", "provider": "openai"}
+}
+```
+
+### Load configuration
+
+Configuration is automatically loaded when loading a program:
+
+```python
+program = MyProgram.from_precompiled("./my_program")
+print(program.config.temperature)  # 0.8
+```
+
+### Standalone configuration
+
+You can also save and load configuration independently:
+
+```python
+# Save
+config = MyConfig(temperature=0.9)
+config.save_precompiled("./my_config")
+
+# Load
+config = MyConfig.from_precompiled("./my_config")
+```
+
+## Environment configuration
+
+Modaic uses the `modaic-client` settings for environment-level configuration like cache directories and authentication.
+
+### Settings module
+
+Access global settings:
+
+```python
+from modaic_client import settings
+
+print(settings.modaic_cache)      # ~/.modaic/
+print(settings.modaic_hub_cache)  # ~/.modaic/modaic_hub/
+print(settings.staging_dir)       # ~/.modaic/staging/
+print(settings.modaic_token)      # Your access token
+print(settings.modaic_git_url)    # Git server URL
+```
+
+### Configure function
+
+Set environment configuration:
+
+```python
+from modaic import configure
+
+configure(
+    modaic_token="your-access-token",
+    modaic_cache="/custom/cache/path"
+)
+```
+
+<Warning>
+Environment settings affect all operations in your Python session. Set them early in your script.
+</Warning>
+
+### Environment variables
+
+You can also configure Modaic using environment variables:
+
+```bash
+export MODAIC_TOKEN="your-access-token"
+export MODAIC_CACHE="/custom/cache/path"
+```
+
+Modaic automatically loads environment variables from `.env` files:
+
+```bash
+# .env
+MODAIC_TOKEN=your-access-token
+OPENAI_API_KEY=your-openai-key
+HF_TOKEN=your-hf-token
+```
+
+## Configuration validation
+
+Leverage Pydantic's validation for robust configuration:
+
+### Field validators
+
+```python
+from modaic import PrecompiledConfig
+from pydantic import field_validator
+
+class MyConfig(PrecompiledConfig):
+    temperature: float = 0.7
+    
+    @field_validator("temperature")
+    @classmethod
+    def validate_temperature(cls, v):
+        if not 0 <= v <= 2:
+            raise ValueError("Temperature must be between 0 and 2")
+        return v
+```
+
+### Model validators
+
+```python
+from pydantic import model_validator
+
+class MyConfig(PrecompiledConfig):
+    min_tokens: int = 10
+    max_tokens: int = 1000
+    
+    @model_validator(mode="after")
+    def validate_token_range(self):
+        if self.min_tokens >= self.max_tokens:
+            raise ValueError("min_tokens must be less than max_tokens")
+        return self
+```
+
+### Field constraints
+
+```python
+from pydantic import Field
+
+class MyConfig(PrecompiledConfig):
+    # Numeric constraints
+    temperature: float = Field(default=0.7, ge=0, le=2)
+    max_tokens: int = Field(default=1000, gt=0, le=10000)
+    
+    # String constraints
+    model_name: str = Field(default="gpt-4", min_length=1, max_length=50)
+    
+    # List constraints
+    keywords: list[str] = Field(default_factory=list, max_length=10)
+```
+
+## Advanced configuration patterns
+
+### DSPy signature in config
+
+Store DSPy signatures in your configuration:
+
+```python
+import dspy
+from modaic import PrecompiledConfig
+from typing import Type
+
+class QASignature(dspy.Signature):
+    question: str = dspy.InputField()
+    answer: str = dspy.OutputField()
+
+class MyConfig(PrecompiledConfig):
+    signature: Type[dspy.Signature] = QASignature
+    temperature: float = 0.7
+
+class MyProgram(PrecompiledProgram):
+    config: MyConfig
+    
+    def __init__(self, config: MyConfig = None, **kwargs):
+        super().__init__(config, **kwargs)
+        # Use signature from config
+        self.predictor = dspy.Predict(self.config.signature)
+```
+
+The signature is automatically serialized to a module path when saved and reconstructed when loaded.
+
+### Nested configurations
+
+```python
+from pydantic import BaseModel
+
+class EmbeddingConfig(BaseModel):
+    model: str = "text-embedding-3-small"
+    dimensions: int = 1536
+
+class RetrieverConfig(BaseModel):
+    top_k: int = 10
+    embedding: EmbeddingConfig = EmbeddingConfig()
+
+class MyConfig(PrecompiledConfig):
+    retriever: RetrieverConfig = RetrieverConfig()
+    temperature: float = 0.7
+
+# Access nested values
+config = MyConfig()
+print(config.retriever.embedding.model)  # "text-embedding-3-small"
+```
+
+### Configuration inheritance
+
+```python
+class BaseConfig(PrecompiledConfig):
+    temperature: float = 0.7
+    max_tokens: int = 1000
+
+class DevelopmentConfig(BaseConfig):
+    temperature: float = 0.9  # Override default
+    debug: bool = True
+
+class ProductionConfig(BaseConfig):
+    temperature: float = 0.5  # Override default
+    log_level: str = "INFO"
+```
+
+## Configuration serialization
+
+### To dictionary
+
+```python
+config = MyConfig(temperature=0.8)
+config_dict = config.to_dict()
+# {"temperature": 0.8, "max_tokens": 1000, ...}
+```
+
+### From dictionary
+
+```python
+config_dict = {"temperature": 0.9, "max_tokens": 2000}
+config = MyConfig.from_dict(config_dict)
+```
+
+### To JSON
+
+```python
+config = MyConfig(temperature=0.8)
+json_str = config.to_json()
+# '{"temperature": 0.8, "max_tokens": 1000, ...}'
+```
+
+### From JSON
+
+```python
+config = MyConfig.from_json("./config.json")
+```
+
+## Best practices
+
+<Steps>
+
+<Step title="Use type hints">
+Always specify types for configuration fields:
+
+```python
+class MyConfig(PrecompiledConfig):
+    temperature: float = 0.7  # Good
+    # temperature = 0.7  # Bad - no type hint
+```
+</Step>
+
+<Step title="Provide sensible defaults">
+Set reasonable default values for all fields:
+
+```python
+class MyConfig(PrecompiledConfig):
+    temperature: float = 0.7  # Good default
+    max_tokens: int = 1000    # Good default
+```
+</Step>
+
+<Step title="Add validation">
+Validate configuration values to catch errors early:
+
+```python
+class MyConfig(PrecompiledConfig):
+    temperature: float = Field(default=0.7, ge=0, le=2)
+    
+    @field_validator("temperature")
+    @classmethod
+    def warn_high_temp(cls, v):
+        if v > 1.5:
+            warnings.warn("High temperature may produce unpredictable results")
+        return v
+```
+</Step>
+
+<Step title="Document fields">
+Use descriptions to document configuration options:
+
+```python
+class MyConfig(PrecompiledConfig):
+    temperature: float = Field(
+        default=0.7,
+        ge=0,
+        le=2,
+        description="Controls randomness in generation. Higher values increase creativity."
+    )
+```
+</Step>
+
+<Step title="Keep secrets out of config">
+Never store API keys or secrets in configuration files:
+
+```python
+# Good - pass secrets at runtime
+program = MyProgram.from_precompiled(
+    "./my_program",
+    api_key=os.environ["OPENAI_API_KEY"]
+)
+
+# Bad - don't store in config
+class MyConfig(PrecompiledConfig):
+    api_key: str = "sk-..."  # DON'T DO THIS
+```
+</Step>
+
+</Steps>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Precompiled programs" icon="box" href="/concepts/precompiled-programs">
+    Learn how to use configuration with programs
+  </Card>
+  <Card title="Hub operations" icon="cloud-arrow-up" href="/concepts/hub-operations">
+    Version control your configurations
+  </Card>
+</CardGroup>

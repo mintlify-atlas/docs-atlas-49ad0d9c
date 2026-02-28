@@ -1,0 +1,375 @@
+---
+title: Auto Classes
+description: API reference for AutoProgram, AutoConfig, AutoAgent, and AutoRetriever classes
+---
+
+## AutoConfig
+
+Dynamic config loader for precompiled programs and retrievers. Automatically loads the correct config class from a repository.
+
+```python
+from modaic import AutoConfig
+
+# Load from Modaic Hub
+config = AutoConfig.from_precompiled("username/my-program")
+
+# Load from local directory
+config = AutoConfig.from_precompiled("./my-program")
+```
+
+### Methods
+
+#### from_precompiled
+
+Loads a config from a precompiled repository (local or on Modaic Hub).
+
+```python
+config = AutoConfig.from_precompiled(
+    "username/my-program",
+    rev="v1.0.0",
+    temperature=0.8
+)
+```
+
+<ParamField path="repo_path" type="str" required>
+  The path to the repository. Can be:
+  - A Modaic Hub path in the format `"username/repo-name"`
+  - A local directory path (must start with `./`, `/`, or `../`)
+</ParamField>
+
+<ParamField path="rev" type="str" default="main">
+  The git revision (branch, tag, or commit) to load from. Only applies to Hub repositories.
+</ParamField>
+
+<ParamField path="**kwargs" type="Any">
+  Additional keyword arguments used to override config values.
+</ParamField>
+
+<ResponseField name="return" type="PrecompiledConfig">
+  An instance of the appropriate PrecompiledConfig subclass.
+</ResponseField>
+
+---
+
+## AutoProgram
+
+Dynamic loader for precompiled programs hosted on Modaic Hub or stored locally. Automatically loads the correct program class and its configuration.
+
+```python
+from modaic import AutoProgram
+
+# Load from Modaic Hub
+program = AutoProgram.from_precompiled(
+    "username/my-program",
+    api_key="your-api-key"
+)
+
+# Load from local directory
+program = AutoProgram.from_precompiled(
+    "./my-program",
+    api_key="your-api-key"
+)
+
+# Use the program
+result = program(question="What is the capital of France?")
+```
+
+### Methods
+
+#### from_precompiled
+
+Loads a compiled program from the given identifier.
+
+```python
+program = AutoProgram.from_precompiled(
+    "username/my-program",
+    access_token="your-modaic-token",
+    config={"temperature": 0.8},
+    api_key="your-api-key",
+    hf_token="your-hf-token",
+    rev="main"
+)
+```
+
+<ParamField path="repo_path" type="str" required>
+  The path to the repository. Can be:
+  - A Modaic Hub path in the format `"username/repo-name"`
+  - A local directory path (must start with `./`, `/`, or `../`)
+</ParamField>
+
+<ParamField path="access_token" type="str">
+  Your Modaic access token. Required for private repositories on Modaic Hub.
+</ParamField>
+
+<ParamField path="config" type="dict">
+  A dictionary containing key-value pairs used to override the default config values.
+</ParamField>
+
+<ParamField path="api_key" type="str | dict[str, str]">
+  Your API key for your language model provider (NOT your Modaic access token).
+  - If a string: the same API key is used for all predictors
+  - If a dict: maps predictor names to their respective API keys (e.g., `{"my_program.predict": "key1", "my_program.summarizer": "key2"}`)
+</ParamField>
+
+<ParamField path="hf_token" type="str | dict[str, str]">
+  Your Hugging Face token.
+  - If a string: the same token is used for all predictors
+  - If a dict: maps predictor names to their respective tokens
+</ParamField>
+
+<ParamField path="rev" type="str" default="main">
+  The git revision (branch, tag, or commit) to load from. Only applies to Hub repositories.
+</ParamField>
+
+<ParamField path="**kwargs" type="Any">
+  Additional keyword arguments forwarded to the program's constructor.
+</ParamField>
+
+<ResponseField name="return" type="PrecompiledProgram">
+  An instantiated PrecompiledProgram subclass with:
+  - `_source` set to the local repository directory
+  - `_source_commit` set to the commit information
+  - `_from_auto` set to `True`
+</ResponseField>
+
+### Example
+
+```python
+from modaic import AutoProgram
+
+# Load a Q&A program from the hub
+program = AutoProgram.from_precompiled(
+    "modaic/basic-qa",
+    api_key="sk-..."
+)
+
+# Override config values
+program = AutoProgram.from_precompiled(
+    "modaic/basic-qa",
+    config={"temperature": 0.9, "max_tokens": 2000},
+    api_key="sk-..."
+)
+
+# Load a specific version
+program = AutoProgram.from_precompiled(
+    "modaic/basic-qa",
+    rev="v1.0.0",
+    api_key="sk-..."
+)
+
+# Use different API keys for different predictors
+program = AutoProgram.from_precompiled(
+    "username/my-program",
+    api_key={
+        "program.predictor1": "key1",
+        "program.predictor2": "key2"
+    }
+)
+```
+
+---
+
+## AutoAgent
+
+<Warning>
+  **Deprecated**: `AutoAgent` is deprecated and will be removed in a future version. Please use `AutoProgram` instead for better parity with DSPy.
+</Warning>
+
+`AutoAgent` is an alias for `AutoProgram` provided for backward compatibility.
+
+```python
+# Deprecated
+from modaic import AutoAgent
+agent = AutoAgent.from_precompiled("username/my-program")
+
+# Use instead
+from modaic import AutoProgram
+program = AutoProgram.from_precompiled("username/my-program")
+```
+
+### Methods
+
+#### from_precompiled
+
+<Warning>
+  This method is deprecated. Use `AutoProgram.from_precompiled()` instead.
+</Warning>
+
+Loads a compiled program from the given identifier. This method has the same signature as `AutoProgram.from_precompiled()` but emits a deprecation warning.
+
+<ParamField path="repo_path" type="str" required>
+  The path to the repository.
+</ParamField>
+
+<ParamField path="config" type="dict">
+  Configuration overrides.
+</ParamField>
+
+<ParamField path="**kwargs" type="Any">
+  Additional keyword arguments.
+</ParamField>
+
+<ResponseField name="return" type="PrecompiledProgram">
+  An instantiated PrecompiledProgram subclass.
+</ResponseField>
+
+---
+
+## AutoRetriever
+
+Dynamic loader for precompiled retrievers hosted on Modaic Hub or stored locally. Automatically loads the correct retriever class and its configuration.
+
+```python
+from modaic import AutoRetriever
+
+# Load from Modaic Hub
+retriever = AutoRetriever.from_precompiled("username/my-retriever")
+
+# Load from local directory
+retriever = AutoRetriever.from_precompiled("./my-retriever")
+
+# Use the retriever
+results = retriever.retrieve("search query")
+```
+
+### Methods
+
+#### from_precompiled
+
+Loads a compiled retriever from the given identifier.
+
+```python
+retriever = AutoRetriever.from_precompiled(
+    "username/my-retriever",
+    config={"top_k": 10},
+    rev="main"
+)
+```
+
+<ParamField path="repo_path" type="str" required>
+  The path to the repository. Can be:
+  - A Modaic Hub path in the format `"username/repo-name"`
+  - A local directory path (must start with `./`, `/`, or `../`)
+</ParamField>
+
+<ParamField path="config" type="dict">
+  A dictionary containing key-value pairs used to override the default config values.
+</ParamField>
+
+<ParamField path="rev" type="str" default="main">
+  The git revision (branch, tag, or commit) to load from. Only applies to Hub repositories.
+</ParamField>
+
+<ParamField path="**kwargs" type="Any">
+  Additional keyword arguments forwarded to the retriever's constructor.
+</ParamField>
+
+<ResponseField name="return" type="Retriever">
+  An instantiated Retriever subclass with:
+  - `_source` set to the local repository directory
+  - `_source_commit` set to the commit information
+  - `_from_auto` set to `True`
+</ResponseField>
+
+### Example
+
+```python
+from modaic import AutoRetriever
+
+# Load a retriever from the hub
+retriever = AutoRetriever.from_precompiled("modaic/vector-retriever")
+
+# Override config values
+retriever = AutoRetriever.from_precompiled(
+    "modaic/vector-retriever",
+    config={"top_k": 20, "similarity_threshold": 0.8}
+)
+
+# Load a specific version
+retriever = AutoRetriever.from_precompiled(
+    "modaic/vector-retriever",
+    rev="v2.1.0"
+)
+
+# Use the retriever
+results = retriever.retrieve(
+    query="machine learning algorithms",
+    top_k=5
+)
+```
+
+---
+
+## Helper Functions
+
+### register
+
+Registers a custom class for use with Auto loaders. This is typically used internally.
+
+```python
+from modaic.auto import register
+
+register(
+    name="my-custom-program",
+    auto_type="AutoProgram",
+    cls=MyCustomProgram
+)
+```
+
+<ParamField path="name" type="str" required>
+  The name to register the class under.
+</ParamField>
+
+<ParamField path="auto_type" type="Literal['AutoConfig', 'AutoProgram', 'AutoRetriever']" required>
+  The type of auto class to register.
+</ParamField>
+
+<ParamField path="cls" type="Type[PrecompiledConfig | PrecompiledProgram | Retriever]" required>
+  The class to register.
+</ParamField>
+
+### Decorators
+
+#### builtin_program
+
+Decorator to register a builtin program.
+
+```python
+from modaic.auto import builtin_program
+
+@builtin_program("my-program")
+class MyProgram(PrecompiledProgram):
+    pass
+```
+
+#### builtin_agent
+
+<Warning>
+  **Deprecated**: Use `builtin_program` instead.
+</Warning>
+
+Decorator to register a builtin agent (deprecated alias for `builtin_program`).
+
+#### builtin_indexer
+
+Decorator to register a builtin indexer.
+
+```python
+from modaic.auto import builtin_indexer
+
+@builtin_indexer("my-indexer")
+class MyIndexer(Indexer):
+    pass
+```
+
+#### builtin_config
+
+Decorator to register a builtin config.
+
+```python
+from modaic.auto import builtin_config
+
+@builtin_config("my-config")
+class MyConfig(PrecompiledConfig):
+    pass
+```

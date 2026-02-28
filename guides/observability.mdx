@@ -1,0 +1,351 @@
+---
+title: Observability
+description: Track and monitor your DSPy program predictions with automatic logging
+---
+
+## Overview
+
+Modaic provides automatic observability for programs loaded from the hub. Predictions are logged to your Modaic account, allowing you to monitor usage, debug issues, and improve your programs.
+
+## Automatic Tracking
+
+Programs loaded with `AutoProgram` automatically track predictions:
+
+```python
+from modaic.auto import AutoProgram
+from modaic_client import settings
+
+# Enable tracking
+settings.track = True
+
+# Load program from hub
+program = AutoProgram.from_precompiled(
+    "username/my-program",
+    access_token="your-token"
+)
+
+# Predictions are automatically logged
+result = program(question="What is DSPy?")
+```
+
+<Note>
+Tracking only works for programs loaded from Modaic Hub that have a `_source_commit`. Local programs are not tracked. See observability.py:24-33.
+</Note>
+
+## Enabling/Disabling Tracking
+
+### Global Control
+
+Control tracking globally:
+
+```python
+from modaic_client import settings
+
+# Enable tracking
+settings.track = True
+
+# Disable tracking
+settings.track = False
+```
+
+### Environment Variable
+
+Set via environment:
+
+```bash
+export MODAIC_TRACK=true
+```
+
+Or in `.env` file:
+
+```
+MODAIC_TRACK=true
+```
+
+## What Gets Logged
+
+Each prediction logs:
+
+1. **Arbiter Info**
+   - Repository path (e.g., `"username/my-program"`)
+   - Commit SHA (specific version used)
+
+2. **Input**
+   - All input parameters passed to the program
+
+3. **Output**
+   - The predicted output (serialized)
+   - Output field name
+
+4. **Reasoning**
+   - Chain-of-thought reasoning if present
+
+<Tip>
+The callback expects predictions with exactly 2 fields, one named `"reasoning"`. If your program doesn't follow this pattern, tracking may fail. See observability.py:36-56.
+</Tip>
+
+## How It Works
+
+Modaic uses a DSPy callback to intercept predictions:
+
+```python
+class ModaicTrackCallback(BaseCallback):
+    def on_module_start(self, call_id: str, instance: PrecompiledProgram, inputs: dict):
+        # Capture inputs and source commit
+        kwargs = inputs.get("kwargs", {})
+        source = instance._source_commit
+        if source and settings.track:
+            self.inputs_cache[call_id] = {"kwargs": kwargs, "source": source}
+
+    def on_module_end(self, call_id: str, outputs: Prediction, exception: Optional[Exception]):
+        # Log the prediction
+        if call_id in self.inputs_cache:
+            entry = self.inputs_cache.pop(call_id)
+            log_prediction(entry["source"], entry["kwargs"], outputs)
+```
+
+The callback is automatically attached when creating a `PrecompiledProgram`. See precompiled.py:269-272.
+
+## Output Serialization
+
+Outputs are automatically serialized:
+
+```python
+# Pydantic models
+class OutputModel(BaseModel):
+    sentiment: str
+    confidence: float
+
+output = OutputModel(sentiment="positive", confidence=0.95)
+# Logged as: {"sentiment": "positive", "confidence": 0.95}
+
+# Other types
+output = {"answer": "Paris"}
+# Logged as JSON string
+```
+
+See observability.py:36-56 for serialization logic.
+
+## Async Logging
+
+Predictions are logged asynchronously to avoid blocking:
+
+```python
+from concurrent.futures import ThreadPoolExecutor
+
+executor = ThreadPoolExecutor(max_workers=2)
+
+def log_prediction(commit, inputs, prediction):
+    # Prepare data
+    example = {
+        "arbiter_repo": commit.repo,
+        "arbiter_hash": commit.sha,
+        "input": inputs,
+        "output": serialized_output,
+        "reasoning": reasoning,
+    }
+    
+    # Submit async
+    executor.submit(
+        httpx.post(
+            f"{settings.modaic_api_url}/api/v1/examples",
+            content=json.dumps(example),
+            headers={"Authorization": f"Bearer {settings.modaic_token}"}
+        )
+    )
+```
+
+Logging happens in a background thread pool, so your program continues immediately.
+
+## Example: Tracked Program
+
+```python
+import dspy
+from modaic.auto import AutoProgram
+from modaic_client import settings
+
+# Enable tracking
+settings.track = True
+settings.modaic_token = "your-token"
+
+# Load program
+program = AutoProgram.from_precompiled(
+    "username/sentiment-classifier",
+    access_token="your-token"
+)
+
+# Run predictions - automatically logged
+test_cases = [
+    {"text": "I love this product!"},
+    {"text": "This is terrible."},
+    {"text": "It's okay, nothing special."},
+]
+
+for case in test_cases:
+    result = program(**case)
+    print(f"Text: {case['text']}")
+    print(f"Sentiment: {result.sentiment}")
+    print(f"Reasoning: {result.reasoning}")
+    print()
+
+# All predictions are now logged to Modaic
+```
+
+## Custom Tracking Requirements
+
+For tracking to work, your program must:
+
+1. **Be loaded from hub** - Have a `_source_commit`
+2. **Return 2-field predictions** - One field named `"reasoning"`
+3. **Have tracking enabled** - `settings.track = True`
+4. **Have a token** - `settings.modaic_token` set
+
+Example program structure:
+
+```python
+class ClassifyWithReasoning(dspy.Signature):
+    """Classify text with reasoning."""
+    
+    text: str = dspy.InputField()
+    reasoning: str = dspy.OutputField(desc="Step-by-step reasoning")
+    sentiment: str = dspy.OutputField(desc="positive, negative, or neutral")
+```
+
+<Warning>
+Programs with different signature structures may fail to log. Ensure your output has exactly 2 fields with one named `"reasoning"`. See observability.py:46-47.
+</Warning>
+
+## Viewing Logged Data
+
+Logged predictions are sent to:
+
+```
+{MODAIC_API_URL}/api/v1/examples
+```
+
+You can view them in your Modaic dashboard or retrieve them via the API.
+
+## Privacy and Data Control
+
+### Disable Tracking
+
+If you don't want predictions logged:
+
+```python
+from modaic_client import settings
+
+settings.track = False
+```
+
+### Local Programs
+
+Local programs are never tracked:
+
+```python
+# Not tracked - loaded locally
+program = MyProgram.from_precompiled("./my-program")
+
+# Tracked - loaded from hub
+program = AutoProgram.from_precompiled("username/my-program")
+```
+
+### Private Repositories
+
+Predictions from private repositories are logged to your account only. They are not visible to others.
+
+## Troubleshooting
+
+### Predictions not logging
+
+Check:
+
+1. **Tracking enabled**: `settings.track = True`
+2. **Token set**: `settings.modaic_token` is valid
+3. **Program from hub**: Loaded with `AutoProgram.from_precompiled()`
+4. **Has source commit**: `program._source_commit` is not `None`
+
+```python
+print(f"Track: {settings.track}")
+print(f"Token: {settings.modaic_token is not None}")
+print(f"Source: {program._source_commit}")
+```
+
+### ModaicError: Arbiter must return a Prediction with 2 fields
+
+Your signature doesn't match the expected format. Ensure:
+
+```python
+class MySignature(dspy.Signature):
+    # ... input fields ...
+    reasoning: str = dspy.OutputField()  # Required
+    answer: str = dspy.OutputField()     # Your output field
+```
+
+### HTTP errors
+
+Logging failures are silent (don't interrupt your program). Check:
+
+- Your `modaic_token` is valid
+- Your network allows connections to `settings.modaic_api_url`
+- The Modaic API is accessible
+
+## Advanced: Custom Callbacks
+
+You can add custom callbacks alongside Modaic tracking:
+
+```python
+from dspy.utils.callback import BaseCallback
+
+class MyCustomCallback(BaseCallback):
+    def on_module_start(self, call_id, instance, inputs):
+        print(f"Starting: {call_id}")
+    
+    def on_module_end(self, call_id, outputs, exception):
+        print(f"Finished: {call_id}")
+
+# Add to program
+program = MyProgram(
+    config=config,
+    callbacks=[MyCustomCallback()]
+)
+```
+
+<Note>
+ModaicTrackCallback is added automatically. Your custom callbacks run alongside it. See precompiled.py:269-272.
+</Note>
+
+## Best Practices
+
+1. **Enable selectively** - Only track in production or evaluation environments
+2. **Monitor dashboard** - Regularly review logged predictions for issues
+3. **Use reasoning** - Include chain-of-thought for better debugging
+4. **Respect privacy** - Disable tracking for sensitive data
+5. **Version tracking** - Use tags/branches to track different program versions
+
+## Example: Conditional Tracking
+
+```python
+import os
+from modaic_client import settings
+from modaic.auto import AutoProgram
+
+# Only track in production
+if os.getenv("ENVIRONMENT") == "production":
+    settings.track = True
+else:
+    settings.track = False
+
+program = AutoProgram.from_precompiled(
+    "username/my-program",
+    access_token=os.getenv("MODAIC_TOKEN")
+)
+
+# Predictions logged only in production
+result = program(input="test")
+```
+
+## Next Steps
+
+- Learn about [batch processing](/guides/batch-processing) to track large-scale inference
+- Explore [bundling and sharing](/guides/bundling-and-sharing) to publish trackable programs
+- See [loading programs](/guides/loading-programs) to understand hub loading

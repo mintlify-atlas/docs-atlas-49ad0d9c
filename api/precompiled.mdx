@@ -1,0 +1,573 @@
+---
+title: Precompiled Classes
+description: API reference for PrecompiledProgram, PrecompiledConfig, PrecompiledAgent, Retriever, and Indexer classes
+---
+
+## PrecompiledConfig
+
+Base configuration class for precompiled programs and retrievers. All custom config classes should inherit from `PrecompiledConfig`.
+
+```python
+from modaic import PrecompiledConfig
+
+class MyConfig(PrecompiledConfig):
+    temperature: float = 0.7
+    max_tokens: int = 1000
+```
+
+### Parameters
+
+<ParamField path="model" type="str" deprecated>
+  The model name. **Deprecated**: This field is deprecated and will be removed in a future release.
+</ParamField>
+
+### Methods
+
+#### save_precompiled
+
+Saves the config to a `config.json` file in the given local folder.
+
+```python
+config.save_precompiled(path="./my-program")
+```
+
+<ParamField path="path" type="str | Path" required>
+  The local folder to save the config to.
+</ParamField>
+
+#### from_precompiled
+
+Loads the config from a `config.json` file in the given path. The path can be a local directory or a repo on Modaic Hub.
+
+```python
+config = MyConfig.from_precompiled(
+    "username/repo-name",
+    access_token="your-token",
+    rev="main"
+)
+```
+
+<ParamField path="path" type="str | Path" required>
+  The path to load the config from. Can be a local directory or a repo on Modaic Hub.
+</ParamField>
+
+<ParamField path="access_token" type="str">
+  Access token for private repos on Modaic Hub.
+</ParamField>
+
+<ParamField path="rev" type="str" default="main">
+  The git revision (branch, tag, or commit) to load from.
+</ParamField>
+
+<ParamField path="**kwargs" type="Any">
+  Additional keyword arguments used to override the default config.
+</ParamField>
+
+<ResponseField name="return" type="PrecompiledConfig">
+  An instance of the PrecompiledConfig class.
+</ResponseField>
+
+#### from_dict
+
+Loads the config from a dictionary.
+
+```python
+config_dict = {"temperature": 0.8, "max_tokens": 500}
+config = MyConfig.from_dict(config_dict)
+```
+
+<ParamField path="dict" type="Dict" required>
+  A dictionary containing the config.
+</ParamField>
+
+<ParamField path="**kwargs" type="Any">
+  Additional keyword arguments used to override the default config.
+</ParamField>
+
+<ResponseField name="return" type="PrecompiledConfig">
+  An instance of the PrecompiledConfig class.
+</ResponseField>
+
+#### from_json
+
+Loads the config from a JSON file.
+
+```python
+config = MyConfig.from_json("./config.json")
+```
+
+<ParamField path="path" type="str" required>
+  The path to load the config from.
+</ParamField>
+
+<ParamField path="**kwargs" type="Any">
+  Additional keyword arguments used to override the default config.
+</ParamField>
+
+<ResponseField name="return" type="PrecompiledConfig">
+  An instance of the PrecompiledConfig class.
+</ResponseField>
+
+#### to_dict
+
+Converts the config to a dictionary, handling DSPy signatures.
+
+```python
+config_dict = config.to_dict()
+```
+
+<ResponseField name="return" type="Dict">
+  A dictionary representation of the config.
+</ResponseField>
+
+#### to_json
+
+Converts the config to a JSON string.
+
+```python
+config_json = config.to_json()
+```
+
+<ResponseField name="return" type="str">
+  A JSON string representation of the config.
+</ResponseField>
+
+---
+
+## PrecompiledProgram
+
+Base class for all precompiled programs. Inherits from `dspy.Module`.
+
+```python
+from modaic import PrecompiledProgram, PrecompiledConfig
+import dspy
+
+class MyProgramConfig(PrecompiledConfig):
+    temperature: float = 0.7
+
+class MyProgram(PrecompiledProgram):
+    config: MyProgramConfig
+    
+    def __init__(self, config=None):
+        super().__init__(config)
+        self.predictor = dspy.ChainOfThought("question -> answer")
+    
+    def forward(self, question):
+        return self.predictor(question=question)
+```
+
+### Attributes
+
+<ResponseField name="config" type="PrecompiledConfig">
+  The config for the program.
+</ResponseField>
+
+<ResponseField name="retriever" type="Retriever | None">
+  The retriever for the program.
+</ResponseField>
+
+<ResponseField name="_source" type="Path">
+  The source directory of the program.
+</ResponseField>
+
+<ResponseField name="_source_commit" type="Commit | None">
+  The commit hash of the program.
+</ResponseField>
+
+<ResponseField name="_from_auto" type="bool">
+  Whether the program was loaded from AutoProgram.
+</ResponseField>
+
+### Constructor
+
+```python
+program = MyProgram(
+    config=config,
+    retriever=retriever
+)
+```
+
+<ParamField path="config" type="PrecompiledConfig | dict">
+  The configuration for the program. Can be a PrecompiledConfig instance or a dictionary.
+</ParamField>
+
+<ParamField path="retriever" type="Retriever">
+  Optional retriever for the program.
+</ParamField>
+
+<ParamField path="**kwargs" type="Any">
+  Additional keyword arguments forwarded to `dspy.Module`.
+</ParamField>
+
+### Methods
+
+#### save_precompiled
+
+Saves the `program.json` and `config.json` to the given local folder.
+
+```python
+program.save_precompiled("./my-program")
+```
+
+<ParamField path="path" type="str" required>
+  The local folder to save the program and config to. Must be a local path.
+</ParamField>
+
+#### from_precompiled
+
+Loads the program and the config from the given path.
+
+```python
+program = MyProgram.from_precompiled(
+    "username/repo-name",
+    config={"temperature": 0.8},
+    api_key="your-api-key",
+    access_token="your-access-token"
+)
+```
+
+<ParamField path="path" type="str | Path" required>
+  The path to load the program and config from. Can be a local path or a path on Modaic Hub.
+</ParamField>
+
+<ParamField path="config" type="PrecompiledConfig | dict">
+  A dictionary containing key-value pairs used to override the default config.
+</ParamField>
+
+<ParamField path="access_token" type="str">
+  Your Modaic access token for private repos.
+</ParamField>
+
+<ParamField path="api_key" type="str | dict[str, str]">
+  Your API key for your LM (NOT YOUR MODAIC ACCESS TOKEN). Can be a string for all predictors or a dict mapping predictor names to API keys.
+</ParamField>
+
+<ParamField path="hf_token" type="str | dict[str, str]">
+  Your Hugging Face token. Can be a string for all predictors or a dict mapping predictor names to tokens.
+</ParamField>
+
+<ParamField path="rev" type="str" default="main">
+  The git revision (branch, tag, or commit) to load from.
+</ParamField>
+
+<ParamField path="**kwargs" type="Any">
+  Additional keyword arguments forwarded to the PrecompiledProgram's constructor.
+</ParamField>
+
+<ResponseField name="return" type="PrecompiledProgram">
+  An instance of the PrecompiledProgram class.
+</ResponseField>
+
+#### push_to_hub
+
+Pushes the program and the config to Modaic Hub.
+
+```python
+commit = program.push_to_hub(
+    "username/my-program",
+    access_token="your-token",
+    commit_message="Updated program",
+    with_code=True,
+    private=False
+)
+```
+
+<ParamField path="repo_path" type="str" required>
+  The path on Modaic Hub to save the program and config to (e.g., "username/repo-name").
+</ParamField>
+
+<ParamField path="access_token" type="str">
+  Your Modaic access token.
+</ParamField>
+
+<ParamField path="commit_message" type="str" default="(no commit message)">
+  The commit message to use when pushing to the hub.
+</ParamField>
+
+<ParamField path="with_code" type="bool">
+  Whether to save the code along with the program.json and config.json. Defaults to True if the Program was loaded via AutoProgram, otherwise defaults to False.
+</ParamField>
+
+<ParamField path="private" type="bool" default="false">
+  Whether to create a private repository.
+</ParamField>
+
+<ParamField path="branch" type="str" default="main">
+  The branch to push to.
+</ParamField>
+
+<ParamField path="tag" type="str">
+  Optional tag for the commit.
+</ParamField>
+
+<ParamField path="metadata" type="dict">
+  Optional metadata to include with the commit.
+</ParamField>
+
+<ResponseField name="return" type="Commit">
+  A Commit object containing information about the pushed commit.
+</ResponseField>
+
+---
+
+## PrecompiledAgent
+
+<Warning>
+  **Deprecated**: `PrecompiledAgent` is deprecated and will be removed in a future version. Please use `PrecompiledProgram` instead for better parity with DSPy.
+</Warning>
+
+`PrecompiledAgent` is an alias for `PrecompiledProgram`. Use `PrecompiledProgram` instead.
+
+```python
+# Deprecated
+from modaic import PrecompiledAgent
+
+# Use instead
+from modaic import PrecompiledProgram
+```
+
+---
+
+## Retriever
+
+Abstract base class for retrievers. All custom retrievers should inherit from `Retriever` and implement the `retrieve` method.
+
+```python
+from modaic import Retriever, PrecompiledConfig
+from typing import List
+
+class MyRetrieverConfig(PrecompiledConfig):
+    top_k: int = 5
+
+class MyRetriever(Retriever):
+    config: MyRetrieverConfig
+    
+    def __init__(self, config=None):
+        super().__init__(config)
+        # Initialize your retriever here
+    
+    def retrieve(self, query: str, **kwargs) -> List[str]:
+        # Implement your retrieval logic
+        return ["result1", "result2", "result3"]
+```
+
+### Attributes
+
+<ResponseField name="config" type="PrecompiledConfig">
+  The configuration for the retriever.
+</ResponseField>
+
+<ResponseField name="_source" type="Path | None">
+  The source directory of the retriever.
+</ResponseField>
+
+<ResponseField name="_source_commit" type="Commit | None">
+  The commit hash of the retriever.
+</ResponseField>
+
+<ResponseField name="_from_auto" type="bool">
+  Whether the retriever was loaded from AutoRetriever.
+</ResponseField>
+
+### Constructor
+
+```python
+retriever = MyRetriever(config=config)
+```
+
+<ParamField path="config" type="PrecompiledConfig | dict">
+  The configuration for the retriever. Can be a PrecompiledConfig instance or a dictionary.
+</ParamField>
+
+<ParamField path="**kwargs" type="Any">
+  Additional keyword arguments.
+</ParamField>
+
+### Methods
+
+#### retrieve (abstract)
+
+Retrieves relevant documents or information based on the query. Must be implemented by subclasses.
+
+```python
+results = retriever.retrieve(
+    query="What is the capital of France?",
+    top_k=5
+)
+```
+
+<ParamField path="query" type="str" required>
+  The search query.
+</ParamField>
+
+<ParamField path="**kwargs" type="Any">
+  Additional retrieval parameters specific to the retriever implementation.
+</ParamField>
+
+<ResponseField name="return" type="Any">
+  Retrieved results. The return type depends on the specific retriever implementation.
+</ResponseField>
+
+#### from_precompiled
+
+Loads the retriever and the config from the given path.
+
+```python
+retriever = MyRetriever.from_precompiled(
+    "username/repo-name",
+    config={"top_k": 10},
+    access_token="your-token"
+)
+```
+
+<ParamField path="path" type="str | Path" required>
+  The path to load the retriever from. Can be a local directory or a repo on Modaic Hub.
+</ParamField>
+
+<ParamField path="config" type="dict">
+  A dictionary containing key-value pairs used to override the default config.
+</ParamField>
+
+<ParamField path="access_token" type="str">
+  Your Modaic access token for private repos.
+</ParamField>
+
+<ParamField path="rev" type="str" default="main">
+  The git revision (branch, tag, or commit) to load from.
+</ParamField>
+
+<ParamField path="**kwargs" type="Any">
+  Additional keyword arguments forwarded to the Retriever's constructor.
+</ParamField>
+
+<ResponseField name="return" type="Retriever">
+  An instance of the Retriever class.
+</ResponseField>
+
+#### save_precompiled
+
+Saves the retriever configuration to the given path.
+
+```python
+retriever.save_precompiled("./my-retriever")
+```
+
+<ParamField path="path" type="str | Path" required>
+  The path to save the retriever configuration to.
+</ParamField>
+
+#### push_to_hub
+
+Pushes the retriever and the config to Modaic Hub.
+
+```python
+commit = retriever.push_to_hub(
+    "username/my-retriever",
+    access_token="your-token",
+    commit_message="Updated retriever",
+    with_code=True
+)
+```
+
+<ParamField path="repo_path" type="str" required>
+  The path on Modaic Hub to save the retriever and config to.
+</ParamField>
+
+<ParamField path="access_token" type="str">
+  Your Modaic access token.
+</ParamField>
+
+<ParamField path="commit_message" type="str" default="(no commit message)">
+  The commit message to use when pushing to the hub.
+</ParamField>
+
+<ParamField path="with_code" type="bool">
+  Whether to save the code along with the config. Defaults to True if the Retriever was loaded via AutoRetriever, otherwise defaults to False.
+</ParamField>
+
+<ParamField path="private" type="bool" default="false">
+  Whether to create a private repository.
+</ParamField>
+
+<ParamField path="branch" type="str" default="main">
+  The branch to push to.
+</ParamField>
+
+<ParamField path="tag" type="str">
+  Optional tag for the commit.
+</ParamField>
+
+<ResponseField name="return" type="Commit">
+  A Commit object containing information about the pushed commit.
+</ResponseField>
+
+---
+
+## Indexer
+
+Abstract base class for indexers. Extends `Retriever` with indexing capabilities. All custom indexers should inherit from `Indexer` and implement both the `retrieve` and `index` methods.
+
+```python
+from modaic import Indexer, PrecompiledConfig
+from typing import Any, List
+
+class MyIndexerConfig(PrecompiledConfig):
+    top_k: int = 5
+    index_name: str = "default"
+
+class MyIndexer(Indexer):
+    config: MyIndexerConfig
+    
+    def __init__(self, config=None):
+        super().__init__(config)
+        # Initialize your indexer here
+    
+    def index(self, contents: Any, **kwargs) -> None:
+        # Implement your indexing logic
+        pass
+    
+    def retrieve(self, query: str, **kwargs) -> List[str]:
+        # Implement your retrieval logic
+        return ["result1", "result2", "result3"]
+```
+
+### Attributes
+
+Inherits all attributes from `Retriever`.
+
+<ResponseField name="config" type="PrecompiledConfig">
+  The configuration for the indexer.
+</ResponseField>
+
+### Methods
+
+#### index (abstract)
+
+Indexes the given contents. Must be implemented by subclasses.
+
+```python
+indexer.index(
+    contents=["doc1", "doc2", "doc3"],
+    batch_size=100
+)
+```
+
+<ParamField path="contents" type="Any" required>
+  The contents to index. The type depends on the specific indexer implementation.
+</ParamField>
+
+<ParamField path="**kwargs" type="Any">
+  Additional indexing parameters specific to the indexer implementation.
+</ParamField>
+
+#### retrieve
+
+Inherited from `Retriever`. Retrieves relevant documents based on the query.
+
+```python
+results = indexer.retrieve(query="search query")
+```
+
+See [Retriever.retrieve](#retrieve-abstract) for parameter details.
+
+Indexer also inherits all other methods from `Retriever`, including `from_precompiled`, `save_precompiled`, and `push_to_hub`.

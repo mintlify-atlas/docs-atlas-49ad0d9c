@@ -1,0 +1,268 @@
+---
+title: "Sentiment Analysis"
+description: "Build a sentiment analysis classifier using PrecompiledProgram and deploy to Modaic Hub"
+---
+
+This example demonstrates how to create a simple sentiment analysis classifier using DSPy and Modaic's `PrecompiledProgram`. You'll learn how to define custom signatures, build a program, and deploy it to Modaic Hub for reuse.
+
+## Overview
+
+Sentiment analysis classifies text as positive, negative, or neutral. This example shows how to:
+- Define a DSPy signature for sentiment classification
+- Create a `PrecompiledProgram` with custom configuration
+- Use Chain-of-Thought reasoning for better accuracy
+- Deploy the program to Modaic Hub
+
+## Prerequisites
+
+<Info>
+  Before starting, ensure you have:
+  - Python 3.9 or higher installed
+  - Modaic SDK installed: `pip install modaic`
+  - An OpenAI API key set in your environment
+  - A Modaic Hub account for deployment
+</Info>
+
+## Implementation
+
+<Steps>
+<Step title="Define the sentiment signature">
+
+First, create a DSPy signature that defines the input and output for sentiment analysis:
+
+```python
+import dspy
+from modaic.precompiled import PrecompiledProgram, PrecompiledConfig
+
+class SentimentSignature(dspy.Signature):
+    """Analyze the sentiment of the given text and classify it as positive, negative, or neutral."""
+    
+    text = dspy.InputField(desc="The text to analyze for sentiment")
+    sentiment = dspy.OutputField(desc="The sentiment classification: positive, negative, or neutral")
+    confidence = dspy.OutputField(desc="Confidence score for the classification")
+```
+
+<Tip>Use clear descriptions in your signature fields to help the LM understand the task better.</Tip>
+
+</Step>
+
+<Step title="Create the configuration class">
+
+Define a configuration class to store program settings:
+
+```python
+class SentimentConfig(PrecompiledConfig):
+    """Configuration for sentiment analysis program."""
+    
+    temperature: float = 0.3  # Lower temperature for more consistent results
+    max_examples: int = 5     # Number of examples to use in few-shot learning
+```
+
+</Step>
+
+<Step title="Build the PrecompiledProgram">
+
+Create your sentiment analysis program by extending `PrecompiledProgram`:
+
+```python
+class SentimentAnalyzer(PrecompiledProgram):
+    """A sentiment analysis program using Chain-of-Thought reasoning."""
+    
+    config: SentimentConfig
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Use ChainOfThought for better reasoning
+        self.predictor = dspy.ChainOfThought(SentimentSignature)
+        # Set the language model
+        self.set_lm(dspy.LM("openai/gpt-4o-mini"))
+    
+    def forward(self, text: str) -> dict:
+        """Analyze sentiment of the input text."""
+        result = self.predictor(text=text)
+        return {
+            "sentiment": result.sentiment,
+            "confidence": result.confidence,
+            "text": text
+        }
+```
+
+</Step>
+
+<Step title="Test the program locally">
+
+Before deploying, test your program with sample inputs:
+
+```python
+import dspy
+
+# Configure DSPy
+dspy.configure(
+    lm=dspy.LM("openai/gpt-4o-mini"),
+    adapter=dspy.ChatAdapter()
+)
+
+# Create and test the program
+config = SentimentConfig(temperature=0.3)
+analyzer = SentimentAnalyzer(config=config)
+
+# Test with various examples
+test_texts = [
+    "I absolutely love this product! It's amazing!",
+    "This is the worst experience I've ever had.",
+    "The weather is okay today, nothing special.",
+    "I'm thrilled with the results, exceeded my expectations!"
+]
+
+for text in test_texts:
+    result = analyzer(text=text)
+    print(f"Text: {result['text']}")
+    print(f"Sentiment: {result['sentiment']}")
+    print(f"Confidence: {result['confidence']}")
+    print("-" * 50)
+```
+
+</Step>
+
+<Step title="Deploy to Modaic Hub">
+
+Once satisfied with your program, deploy it to Modaic Hub:
+
+```python
+# Push to hub for reuse
+analyzer.push_to_hub("your-username/sentiment-analyzer")
+
+print("✓ Program deployed successfully!")
+```
+
+Others can now load your program:
+
+```python
+from modaic.precompiled import PrecompiledProgram
+
+# Load from hub
+analyzer = PrecompiledProgram.from_hub("your-username/sentiment-analyzer")
+
+# Use immediately
+result = analyzer(text="This is fantastic!")
+print(result)
+```
+
+</Step>
+</Steps>
+
+## Complete Example
+
+<CodeGroup>
+```python sentiment_analyzer.py
+import dspy
+from modaic.precompiled import PrecompiledProgram, PrecompiledConfig
+
+# Define the signature
+class SentimentSignature(dspy.Signature):
+    """Analyze the sentiment of the given text and classify it as positive, negative, or neutral."""
+    
+    text = dspy.InputField(desc="The text to analyze for sentiment")
+    sentiment = dspy.OutputField(desc="The sentiment classification: positive, negative, or neutral")
+    confidence = dspy.OutputField(desc="Confidence score for the classification")
+
+# Configuration
+class SentimentConfig(PrecompiledConfig):
+    temperature: float = 0.3
+    max_examples: int = 5
+
+# Program implementation
+class SentimentAnalyzer(PrecompiledProgram):
+    """A sentiment analysis program using Chain-of-Thought reasoning."""
+    
+    config: SentimentConfig
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.predictor = dspy.ChainOfThought(SentimentSignature)
+        self.set_lm(dspy.LM("openai/gpt-4o-mini"))
+    
+    def forward(self, text: str) -> dict:
+        result = self.predictor(text=text)
+        return {
+            "sentiment": result.sentiment,
+            "confidence": result.confidence,
+            "text": text
+        }
+
+if __name__ == "__main__":
+    # Configure DSPy
+    dspy.configure(
+        lm=dspy.LM("openai/gpt-4o-mini"),
+        adapter=dspy.ChatAdapter()
+    )
+    
+    # Create program
+    config = SentimentConfig(temperature=0.3)
+    analyzer = SentimentAnalyzer(config=config)
+    
+    # Test examples
+    test_texts = [
+        "I absolutely love this product! It's amazing!",
+        "This is the worst experience I've ever had.",
+        "The weather is okay today, nothing special.",
+    ]
+    
+    for text in test_texts:
+        result = analyzer(text=text)
+        print(f"Text: {result['text']}")
+        print(f"Sentiment: {result['sentiment']}")
+        print(f"Confidence: {result['confidence']}")
+        print("-" * 50)
+    
+    # Deploy to hub
+    analyzer.push_to_hub("your-username/sentiment-analyzer")
+```
+</CodeGroup>
+
+## Expected Output
+
+When you run the program, you should see output similar to:
+
+```
+Text: I absolutely love this product! It's amazing!
+Sentiment: positive
+Confidence: 0.95
+--------------------------------------------------
+Text: This is the worst experience I've ever had.
+Sentiment: negative
+Confidence: 0.92
+--------------------------------------------------
+Text: The weather is okay today, nothing special.
+Sentiment: neutral
+Confidence: 0.88
+--------------------------------------------------
+✓ Program deployed successfully!
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use Clear Signatures" icon="signature">
+    Define precise input/output fields with descriptive documentation to improve LM understanding.
+  </Card>
+  <Card title="Test Locally First" icon="flask">
+    Always test your program with diverse examples before deploying to ensure reliability.
+  </Card>
+  <Card title="Configure Temperature" icon="temperature-half">
+    Lower temperature (0.1-0.3) for consistent classifications, higher for creative tasks.
+  </Card>
+  <Card title="Version Control" icon="code-branch">
+    Use meaningful names when pushing to hub, like `username/sentiment-v1` for versioning.
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+- Learn about [Batch Processing](/examples/batch-inference) for analyzing multiple texts efficiently
+- Explore [optimization techniques](/sdk_reference/modaic/optimize) to improve accuracy
+- Add [observability](/sdk_reference/modaic/observability) to track performance in production
+
+<Tip>
+  You can extend this example by adding emotion detection, aspect-based sentiment analysis, or multi-language support.
+</Tip>

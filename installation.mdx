@@ -1,0 +1,112 @@
+---
+title: Installation
+description: Install Modaic using uv or pip
+---
+
+## Prerequisites
+
+- Python 3.9 or higher
+- pip or uv package manager
+
+## Install with uv (recommended)
+
+[uv](https://github.com/astral-sh/uv) is a fast Python package installer and resolver. It's the recommended way to install Modaic for the best development experience.
+
+<Steps>
+  <Step title="Add Modaic to your project">
+    ```bash
+    uv add modaic
+    ```
+  </Step>
+
+  <Step title="Set up hub authentication (optional)">
+    If you want to push programs to Modaic Hub, set your access token:
+
+    ```bash
+    export MODAIC_TOKEN="<your-token>"
+    ```
+
+    <Info>
+      Hub operations like `push_to_hub()` require a Modaic access token. You can create one by signing up at [modaic.dev](https://modaic.dev).
+    </Info>
+  </Step>
+
+  <Step title="Verify installation">
+    ```bash
+    uv run python -c "import modaic; print(modaic.__version__)"
+    ```
+  </Step>
+</Steps>
+
+## Install with pip
+
+If you prefer pip, you can install Modaic using:
+
+```bash
+pip install modaic
+```
+
+<Warning>
+  When installing with pip, you will not be able to push DSPy programs to the Modaic Hub. Use uv for full hub functionality.
+</Warning>
+
+## Development installation
+
+If you want to contribute to Modaic or install from source:
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/modaic-ai/modaic.git
+    cd modaic
+    ```
+  </Step>
+
+  <Step title="Install development dependencies">
+    ```bash
+    uv sync --all-extras
+    ```
+  </Step>
+
+  <Step title="Run tests">
+    ```bash
+    uv run pytest
+    ```
+  </Step>
+</Steps>
+
+## Environment variables
+
+Modaic supports the following environment variables:
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `MODAIC_TOKEN` | Your Modaic Hub access token for push operations | No |
+| `OPENAI_API_KEY` | OpenAI API key for using OpenAI models | No* |
+| `ANTHROPIC_API_KEY` | Anthropic API key for using Claude models | No* |
+| `TOGETHER_API_KEY` | Together AI API key for using Together models | No* |
+
+<Note>
+  *Required only if you're using the corresponding LLM provider in your programs.
+</Note>
+
+## Verify your installation
+
+To verify that Modaic is installed correctly, try importing the main classes:
+
+```python
+from modaic import (
+    PrecompiledProgram,
+    PrecompiledConfig,
+    AutoProgram,
+    AutoConfig,
+)
+
+print("Modaic installed successfully!")
+```
+
+## Next steps
+
+<Card title="Quick start" icon="rocket" href="/quickstart">
+  Build your first Modaic program
+</Card>

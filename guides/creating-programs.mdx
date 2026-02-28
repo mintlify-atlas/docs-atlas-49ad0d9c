@@ -1,0 +1,196 @@
+---
+title: Creating Programs
+description: Learn how to create PrecompiledProgram from scratch with custom configurations and predictors
+---
+
+## Overview
+
+PrecompiledProgram is the base class for building DSPy applications in Modaic. It extends `dspy.Module` and provides configuration management, serialization, and hub integration.
+
+## Basic Structure
+
+Every PrecompiledProgram consists of two main components:
+
+1. **Config Class** - Defines parameters and settings (extends `PrecompiledConfig`)
+2. **Program Class** - Implements the logic (extends `PrecompiledProgram`)
+
+## Creating a Simple Program
+
+<Steps>
+  <Step title="Define Your Config">
+    Create a config class that extends `PrecompiledConfig` to store your program's parameters:
+
+    ```python
+    from modaic.precompiled import PrecompiledConfig
+    from typing import Literal
+
+    class ExampleConfig(PrecompiledConfig):
+        output_type: Literal["bool", "str"]
+        lm: str = "openai/gpt-4o-mini"
+        number: int = 1
+    ```
+
+    Config classes are Pydantic models, so you get automatic validation and type checking.
+  </Step>
+
+  <Step title="Define Your Program">
+    Create your program class with the config annotation:
+
+    ```python
+    import dspy
+    from modaic.precompiled import PrecompiledProgram
+
+    class Summarize(dspy.Signature):
+        question: str = dspy.InputField()
+        context: str = dspy.InputField()
+        answer: str = dspy.OutputField(desc="Answer to the question")
+
+    class ExampleProgram(PrecompiledProgram):
+        config: ExampleConfig
+
+        def __init__(self, config: ExampleConfig, **kwargs):
+            super().__init__(config, **kwargs)
+            self.predictor = dspy.Predict(Summarize)
+            self.predictor.lm = dspy.LM(config.lm)
+
+        def forward(self, question: str, context: str) -> str:
+            return self.predictor(question=question, context=context)
+    ```
+  </Step>
+
+  <Step title="Instantiate and Use">
+    Create an instance and run predictions:
+
+    ```python
+    # Create config
+    config = ExampleConfig(
+        output_type="str",
+        lm="openai/gpt-4o-mini",
+        number=5
+    )
+
+    # Initialize program
+    program = ExampleProgram(config=config)
+
+    # Run inference
+    result = program(
+        question="What is the main topic?",
+        context="DSPy is a framework for programming with language models."
+    )
+    print(result.answer)
+    ```
+  </Step>
+</Steps>
+
+## Advanced: Programs with DSPy Signatures in Config
+
+You can include DSPy Signature classes directly in your config:
+
+```python
+from typing import Type
+
+class ConfigWithSignature(PrecompiledConfig):
+    signature: Type[dspy.Signature]
+    lm: str = "openai/gpt-4o-mini"
+
+class ProgramWithSignatureConfig(PrecompiledProgram):
+    config: ConfigWithSignature
+
+    def __init__(self, config: ConfigWithSignature, **kwargs):
+        super().__init__(config, **kwargs)
+        self.predictor = dspy.Predict(config.signature)
+        self.predictor.lm = dspy.LM(config.lm)
+
+    def forward(self, **kwargs) -> str:
+        return self.predictor(**kwargs)
+```
+
+<Note>
+DSPy Signatures in configs are automatically serialized and deserialized when saving/loading programs. See precompiled.py:88-123 for implementation details.
+</Note>
+
+## Programs with Retrievers
+
+You can integrate retrievers into your programs:
+
+```python
+class ProgramConfig(PrecompiledConfig):
+    num_fetch: int
+    lm: str = "openai/gpt-4o-mini"
+    embedder: str = "openai/text-embedding-3-small"
+
+class ExampleRetriever(Retriever):
+    config: ProgramConfig
+
+    def __init__(self, config: ProgramConfig, **kwargs):
+        super().__init__(config, **kwargs)
+        self.embedder_name = config.embedder
+
+    def retrieve(self, query: str) -> str:
+        return f"Retrieved {self.config.num_fetch} results for {query}"
+
+class ProgramWithRetriever(PrecompiledProgram):
+    config: ProgramConfig
+
+    def __init__(self, config: ProgramConfig, retriever: ExampleRetriever, **kwargs):
+        super().__init__(config, retriever=retriever, **kwargs)
+
+    def forward(self, query: str) -> str:
+        return self.retriever.retrieve(query)
+```
+
+## Saving Programs Locally
+
+Save your program and config to a local directory:
+
+```python
+# Save program state and config
+program.save_precompiled("./my-program")
+```
+
+This creates:
+- `program.json` - Serialized DSPy module state
+- `config.json` - Configuration parameters
+
+<Warning>
+API keys and secrets are automatically masked when saving. See precompiled.py:532-561 for secret handling.
+</Warning>
+
+## Key Concepts
+
+### Config Inheritance
+
+Configs support nested structures and complex types:
+
+```python
+from pydantic import Field
+
+class AdvancedConfig(PrecompiledConfig):
+    clients: dict = Field(default_factory=lambda: {
+        "mit": ["csail", "mit-media-lab"],
+        "berkeley": ["bear"]
+    })
+```
+
+### Runtime Parameters
+
+You can pass additional runtime parameters that aren't in the config:
+
+```python
+class MyProgram(PrecompiledProgram):
+    config: ExampleConfig
+
+    def __init__(self, config: ExampleConfig, runtime_param: str, **kwargs):
+        super().__init__(config, **kwargs)
+        self.runtime_param = runtime_param
+```
+
+<Tip>
+Use config for tunable hyperparameters that should be saved/loaded. Use runtime parameters for environment-specific values like file paths.
+</Tip>
+
+## Next Steps
+
+- Learn how to [load programs](/guides/loading-programs) from local paths and the hub
+- Explore [bundling and sharing](/guides/bundling-and-sharing) programs with the community
+- Set up [observability](/guides/observability) to track program performance

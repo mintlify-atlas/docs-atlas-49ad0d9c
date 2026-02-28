@@ -1,0 +1,624 @@
+---
+title: Hub operations
+description: Version control, share, and collaborate on DSPy programs using Modaic Hub
+---
+
+Modaic Hub provides Git-based version control for your DSPy programs, enabling collaboration, versioning, and reproducibility.
+
+## Pushing to the hub
+
+Share your program on Modaic Hub using `push_to_hub()`:
+
+```python
+from modaic import PrecompiledProgram
+
+program = MyProgram(config=MyConfig())
+
+commit = program.push_to_hub(
+    repo_path="username/my-program",
+    access_token="your-modaic-token",
+    commit_message="Initial release",
+    with_code=True,
+    private=False,
+    branch="main",
+    tag="v1.0.0",
+    metadata={"description": "A question answering program"}
+)
+
+print(commit)  # username/my-program@a3f5b2c1...
+```
+
+### Method signature
+
+```python
+def push_to_hub(
+    self,
+    repo_path: str,
+    access_token: Optional[str] = None,
+    commit_message: str = "(no commit message)",
+    with_code: Optional[bool] = True,
+    private: bool = False,
+    branch: str = "main",
+    tag: str = None,
+    metadata: dict = None,
+) -> Commit:
+```
+
+### Parameters explained
+
+<Tabs>
+  <Tab title="repo_path">
+    The repository path on Modaic Hub in the format `username/repo-name`:
+    
+    ```python
+    program.push_to_hub(
+        repo_path="myusername/qa-system",
+        # ...
+    )
+    ```
+    
+    The repository will be created if it doesn't exist.
+  </Tab>
+  
+  <Tab title="access_token">
+    Your Modaic access token for authentication:
+    
+    ```python
+    program.push_to_hub(
+        repo_path="username/repo",
+        access_token="mat_xxxxxxxxxxxxx"
+    )
+    ```
+    
+    If not provided, uses `settings.modaic_token` from environment.
+  </Tab>
+  
+  <Tab title="commit_message">
+    A descriptive message for the commit:
+    
+    ```python
+    program.push_to_hub(
+        repo_path="username/repo",
+        commit_message="Add support for multi-hop reasoning"
+    )
+    ```
+  </Tab>
+  
+  <Tab title="with_code">
+    Whether to include source code in the repository:
+    
+    ```python
+    # Include source code (enables AutoProgram loading)
+    program.push_to_hub(
+        repo_path="username/repo",
+        with_code=True  # Default for programs loaded via AutoProgram
+    )
+    
+    # Only include program.json and config.json
+    program.push_to_hub(
+        repo_path="username/repo",
+        with_code=False  # Default for directly instantiated programs
+    )
+    ```
+    
+    <Info>
+    Set `with_code=True` to enable dynamic loading with `AutoProgram`. This includes your source code and creates the `auto_classes.json` mapping.
+    </Info>
+  </Tab>
+  
+  <Tab title="private">
+    Whether the repository should be private:
+    
+    ```python
+    # Public repository (default)
+    program.push_to_hub(
+        repo_path="username/repo",
+        private=False
+    )
+    
+    # Private repository
+    program.push_to_hub(
+        repo_path="username/repo",
+        private=True
+    )
+    ```
+  </Tab>
+  
+  <Tab title="branch">
+    The branch to push to:
+    
+    ```python
+    # Push to main branch
+    program.push_to_hub(
+        repo_path="username/repo",
+        branch="main"
+    )
+    
+    # Push to a feature branch
+    program.push_to_hub(
+        repo_path="username/repo",
+        branch="experimental"
+    )
+    ```
+    
+    The branch is created if it doesn't exist.
+  </Tab>
+  
+  <Tab title="tag">
+    Optional version tag for the commit:
+    
+    ```python
+    program.push_to_hub(
+        repo_path="username/repo",
+        tag="v1.0.0"
+    )
+    ```
+    
+    Tags are useful for marking releases and making specific versions easy to reference.
+  </Tab>
+  
+  <Tab title="metadata">
+    Additional metadata to include in the repository's README:
+    
+    ```python
+    program.push_to_hub(
+        repo_path="username/repo",
+        metadata={
+            "description": "Multi-hop QA system",
+            "task": "question-answering",
+            "metrics": {"accuracy": 0.92}
+        }
+    )
+    ```
+  </Tab>
+</Tabs>
+
+## Loading from the hub
+
+Load programs from Modaic Hub using `from_precompiled()` or `AutoProgram`:
+
+<Tabs>
+  <Tab title="Specific class">
+    Load using the specific program class:
+    
+    ```python
+    program = MyProgram.from_precompiled(
+        "username/my-program",
+        access_token="your-token",
+        api_key="your-openai-key",
+        rev="main"
+    )
+    ```
+    
+    Requires knowing the program class at import time.
+  </Tab>
+  
+  <Tab title="AutoProgram">
+    Load dynamically without knowing the class:
+    
+    ```python
+    from modaic import AutoProgram
+    
+    program = AutoProgram.from_precompiled(
+        "username/my-program",
+        access_token="your-token",
+        api_key="your-openai-key",
+        rev="main"
+    )
+    ```
+    
+    Works with any program pushed with `with_code=True`.
+  </Tab>
+</Tabs>
+
+### Loading specific versions
+
+<Steps>
+
+<Step title="By branch">
+Load from a specific branch:
+
+```python
+program = AutoProgram.from_precompiled(
+    "username/my-program",
+    rev="development"
+)
+```
+
+Branch references always point to the latest commit on that branch.
+</Step>
+
+<Step title="By tag">
+Load from a tagged version:
+
+```python
+program = AutoProgram.from_precompiled(
+    "username/my-program",
+    rev="v1.0.0"
+)
+```
+
+Tags provide stable references to specific versions.
+</Step>
+
+<Step title="By commit SHA">
+Load from a specific commit:
+
+```python
+program = AutoProgram.from_precompiled(
+    "username/my-program",
+    rev="a3f5b2c1d4e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0"
+)
+```
+
+Commit SHAs provide the most precise version control.
+</Step>
+
+</Steps>
+
+## Version control workflows
+
+### Feature development
+
+Develop new features on separate branches:
+
+```python
+# Load the current version
+program = AutoProgram.from_precompiled("username/my-program", rev="main")
+
+# Make improvements
+# ... modify program ...
+
+# Push to a feature branch
+program.push_to_hub(
+    "username/my-program",
+    branch="feature/multi-hop",
+    commit_message="Add multi-hop reasoning capability"
+)
+```
+
+### Release management
+
+Tag stable releases:
+
+```python
+# Test and finalize your program
+program = MyProgram(config=MyConfig())
+
+# Push with version tag
+commit = program.push_to_hub(
+    "username/my-program",
+    branch="main",
+    tag="v1.0.0",
+    commit_message="Release version 1.0.0",
+    metadata={"changelog": "Initial stable release"}
+)
+```
+
+Users can then load the specific version:
+
+```python
+program = AutoProgram.from_precompiled(
+    "username/my-program",
+    rev="v1.0.0"
+)
+```
+
+### Collaborative development
+
+Multiple developers can work on the same program:
+
+<Steps>
+
+<Step title="Load the program">
+```python
+program = AutoProgram.from_precompiled(
+    "team/shared-program",
+    rev="main"
+)
+```
+</Step>
+
+<Step title="Make changes">
+```python
+# Modify the program
+# ... your changes ...
+```
+</Step>
+
+<Step title="Push to your branch">
+```python
+program.push_to_hub(
+    "team/shared-program",
+    branch="alice/improvements",
+    commit_message="Improve retrieval accuracy"
+)
+```
+</Step>
+
+<Step title="Merge to main">
+After review, merge the branch to main via the hub interface or by loading from the feature branch and pushing to main.
+</Step>
+
+</Steps>
+
+## Commit tracking
+
+The `Commit` object tracks version information:
+
+```python
+commit = program.push_to_hub(
+    "username/my-program",
+    commit_message="Update model"
+)
+
+print(commit.repo)  # "username/my-program"
+print(commit.sha)   # "a3f5b2c1d4e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0"
+print(str(commit))  # "username/my-program@a3f5b2c1..."
+```
+
+Programs loaded from the hub remember their source:
+
+```python
+program = AutoProgram.from_precompiled("username/my-program")
+
+print(program._source_commit.repo)  # "username/my-program"
+print(program._source_commit.sha)   # Commit SHA
+```
+
+## Repository structure
+
+A Modaic Hub repository contains:
+
+### With code (with_code=True)
+
+```
+username/my-program/
+├── config.json            # Program configuration
+├── program.json           # Serialized program state
+├── auto_classes.json      # Class mappings for AutoProgram
+├── README.md              # Repository metadata
+└── src/                   # Your source code
+    ├── program.py
+    ├── config.py
+    └── ...
+```
+
+### Without code (with_code=False)
+
+```
+username/my-program/
+├── config.json            # Program configuration
+├── program.json           # Serialized program state
+└── README.md              # Repository metadata
+```
+
+<Warning>
+Repositories without source code cannot be loaded with `AutoProgram`. You must use the specific program class with `MyProgram.from_precompiled()`.
+</Warning>
+
+## Working with private repositories
+
+Access private repositories using an access token:
+
+```python
+# Push to private repository
+program.push_to_hub(
+    "username/private-program",
+    access_token="your-token",
+    private=True
+)
+
+# Load from private repository
+program = AutoProgram.from_precompiled(
+    "username/private-program",
+    access_token="your-token"
+)
+```
+
+Set your token globally to avoid passing it every time:
+
+```python
+from modaic import configure
+
+configure(modaic_token="your-token")
+
+# Now you can omit access_token parameter
+program.push_to_hub("username/private-program", private=True)
+program = AutoProgram.from_precompiled("username/private-program")
+```
+
+## Caching behavior
+
+Modaic caches repositories locally for performance:
+
+```python
+from modaic_client import settings
+
+print(settings.modaic_hub_cache)  # ~/.modaic/modaic_hub/
+```
+
+### Cache structure
+
+```
+~/.modaic/modaic_hub/
+└── username/
+    └── my-program/
+        ├── main/              # main branch working tree
+        ├── development/       # development branch working tree
+        ├── a3f5b2c1.../      # Specific commit worktree
+        └── v1.0.0 -> a3f5b2c1...  # Tag symlink
+```
+
+### Cache management
+
+Branches are automatically updated when loaded:
+
+```python
+# First load - fetches from hub
+program = AutoProgram.from_precompiled("username/repo", rev="main")
+
+# Subsequent loads - updates from hub
+program = AutoProgram.from_precompiled("username/repo", rev="main")
+```
+
+Commits and tags are immutable and cached permanently:
+
+```python
+# First load - fetches from hub
+program = AutoProgram.from_precompiled("username/repo", rev="v1.0.0")
+
+# Subsequent loads - uses cached version (no fetch)
+program = AutoProgram.from_precompiled("username/repo", rev="v1.0.0")
+```
+
+## Best practices
+
+<Steps>
+
+<Step title="Use semantic versioning">
+Tag releases with semantic version numbers:
+
+```python
+program.push_to_hub(
+    "username/my-program",
+    tag="v1.2.3",  # MAJOR.MINOR.PATCH
+    commit_message="Release v1.2.3"
+)
+```
+</Step>
+
+<Step title="Write descriptive commit messages">
+Help others understand changes:
+
+```python
+program.push_to_hub(
+    "username/my-program",
+    commit_message="Improve retrieval accuracy by 15% with reranking"
+)
+```
+</Step>
+
+<Step title="Use branches for development">
+Keep main stable:
+
+```python
+# Development work
+program.push_to_hub(
+    "username/my-program",
+    branch="development"
+)
+
+# Stable releases
+program.push_to_hub(
+    "username/my-program",
+    branch="main",
+    tag="v1.0.0"
+)
+```
+</Step>
+
+<Step title="Include source code">
+Enable AutoProgram loading:
+
+```python
+program.push_to_hub(
+    "username/my-program",
+    with_code=True  # Required for AutoProgram
+)
+```
+</Step>
+
+<Step title="Add metadata">
+Document your program:
+
+```python
+program.push_to_hub(
+    "username/my-program",
+    metadata={
+        "description": "Multi-hop question answering system",
+        "task": "question-answering",
+        "language": "en",
+        "metrics": {"accuracy": 0.92, "f1": 0.89}
+    }
+)
+```
+</Step>
+
+</Steps>
+
+## Error handling
+
+<Tabs>
+  <Tab title="Authentication error">
+    If authentication fails:
+    
+    ```python
+    # Raises AuthenticationError
+    # "settings.modaic_token is not set"
+    ```
+    
+    Solution: Set your access token:
+    
+    ```python
+    from modaic import configure
+    configure(modaic_token="your-token")
+    ```
+  </Tab>
+  
+  <Tab title="Repository not found">
+    If the repository doesn't exist:
+    
+    ```python
+    # Raises RepositoryNotFoundError
+    # "Repository 'username/repo' does not exist"
+    ```
+    
+    Solution: Check the repository path and access token for private repos.
+  </Tab>
+  
+  <Tab title="Nothing to commit">
+    If there are no changes:
+    
+    ```python
+    # Raises ModaicError
+    # "Nothing to commit"
+    ```
+    
+    This happens when pushing without any changes to the program or config.
+  </Tab>
+  
+  <Tab title="Invalid branch name">
+    If the branch name is invalid:
+    
+    ```python
+    # Raises ModaicError
+    # "Branch name 'origin/main' is invalid. Must be a single
+    # branch name without any remote prefix"
+    ```
+    
+    Solution: Use branch name only, not `origin/branch`.
+  </Tab>
+  
+  <Tab title="Tag already exists">
+    If the tag already exists:
+    
+    ```python
+    # Raises ModaicError
+    # "tag: v1.0.0 already exists"
+    ```
+    
+    Solution: Use a different tag name or update the existing tag manually.
+  </Tab>
+</Tabs>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Auto programs" icon="wand-magic-sparkles" href="/concepts/auto-programs">
+    Learn about dynamic program loading
+  </Card>
+  <Card title="Configuration" icon="sliders" href="/concepts/configuration">
+    Master configuration management
+  </Card>
+</CardGroup>

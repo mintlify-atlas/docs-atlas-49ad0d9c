@@ -1,0 +1,255 @@
+---
+title: Batch Processing
+description: API reference for batch processing functions in Modaic
+---
+
+The batch module provides functions for processing multiple inputs efficiently using provider batch APIs.
+
+## abatch
+
+```python
+async def abatch(
+    predictor: dspy.Predict,
+    inputs: list[dict],
+    show_progress: bool = True,
+    poll_interval: float = 30.0,
+    max_poll_time: str = "24h",
+    status_callback: Optional[Callable[[str, str, Optional[int], dict], None]] = None,
+) -> list[ABatchResult]
+```
+
+Submit a batch of inputs and wait for completion.
+
+This function creates a single batch request for all inputs, formats it for the appropriate provider, submits it, and waits for completion before returning the results. The BatchAdapter is automatically determined from `dspy.settings.adapter`.
+
+<ParamField path="predictor" type="dspy.Predict" required>
+  A dspy.Predict instance to use for processing.
+</ParamField>
+
+<ParamField path="inputs" type="list[dict]" required>
+  A list of input dictionaries for the predictor.
+</ParamField>
+
+<ParamField path="show_progress" type="bool" default="True">
+  If True, show a progress display while waiting (requires rich).
+</ParamField>
+
+<ParamField path="poll_interval" type="float" default="30.0">
+  Seconds between status checks.
+</ParamField>
+
+<ParamField path="max_poll_time" type="str" default="24h">
+  Maximum time to wait for completion as a string like "30s", "5m", or "24h".
+</ParamField>
+
+<ParamField path="status_callback" type="Callable[[str, str, Optional[int], dict], None]">
+  Optional callback function to receive status updates.
+</ParamField>
+
+<ResponseField name="return" type="list[ABatchResult]">
+  A list of ABatchResult objects, one per input. Each ABatchResult contains:
+  - `prediction`: A dspy.Prediction or FailedPrediction
+  - `messages`: The formatted messages sent to the API
+</ResponseField>
+
+**Raises:**
+- `ValueError`: If no LM is configured or provider doesn't support batching
+- `NotImplementedError`: If no BatchAdapter exists for the configured dspy Adapter
+- `TimeoutError`: If job doesn't complete within max_poll_time
+- `RuntimeError`: If the batch job fails
+
+### Example
+
+```python
+import dspy
+from modaic.batch import abatch
+
+dspy.configure(lm=dspy.LM("openai/gpt-4o-mini"))
+predictor = dspy.Predict("question -> answer")
+
+inputs = [
+    {"question": "What is 2+2?"},
+    {"question": "What is the capital of France?"},
+]
+
+# Wait for results with progress display
+results = await abatch(predictor, inputs)
+for res in results:
+    print(res.prediction.answer)
+
+# Custom polling interval and max wait time
+results = await abatch(predictor, inputs, poll_interval=60.0, max_poll_time="1h")
+```
+
+---
+
+## submit_batch_job
+
+```python
+async def submit_batch_job(
+    predictor: dspy.Predict,
+    inputs: list[dict],
+) -> str
+```
+
+Submit a batch job and return the batch ID immediately without waiting for completion.
+
+This function creates a batch request, formats it for the appropriate provider, and submits it. The BatchAdapter is automatically determined from `dspy.settings.adapter`.
+
+<ParamField path="predictor" type="dspy.Predict" required>
+  A dspy.Predict instance to use for processing.
+</ParamField>
+
+<ParamField path="inputs" type="list[dict]" required>
+  A list of input dictionaries for the predictor.
+</ParamField>
+
+<ResponseField name="return" type="str">
+  The batch_id string for tracking the job.
+</ResponseField>
+
+**Raises:**
+- `ValueError`: If no LM is configured or provider doesn't support batching
+- `NotImplementedError`: If no BatchAdapter exists for the configured dspy Adapter
+
+### Example
+
+```python
+import dspy
+from modaic.batch import submit_batch_job
+
+dspy.configure(lm=dspy.LM("openai/gpt-4o-mini"))
+predictor = dspy.Predict("question -> answer")
+
+inputs = [
+    {"question": "What is 2+2?"},
+    {"question": "What is the capital of France?"},
+]
+
+# Submit and get batch_id for later tracking
+batch_id = await submit_batch_job(predictor, inputs)
+print(f"Submitted batch: {batch_id}")
+```
+
+---
+
+## aget_batch_results
+
+```python
+async def aget_batch_results(
+    batch_id: str,
+    provider: str,
+    api_key: Optional[str] = None
+) -> BatchReponse
+```
+
+Get the results of a completed batch job.
+
+<ParamField path="batch_id" type="str" required>
+  The batch ID to get results for.
+</ParamField>
+
+<ParamField path="provider" type="str" required>
+  The provider name (e.g., "openai", "together_ai", "fireworks_ai", "azure", "anthropic").
+</ParamField>
+
+<ParamField path="api_key" type="str">
+  Optional API key for the provider. If not provided, will use environment variables.
+</ParamField>
+
+<ResponseField name="return" type="BatchReponse">
+  BatchReponse containing:
+  - `batch_id`: The batch job ID
+  - `status`: Current status of the batch
+  - `results`: List of raw results from the batch API
+  - `errors`: Optional list of errors
+  - `raw_response`: Optional raw API response
+</ResponseField>
+
+### Example
+
+```python
+from modaic.batch import aget_batch_results
+
+response = await aget_batch_results(
+    batch_id="batch_abc123",
+    provider="openai"
+)
+print(f"Status: {response.status}")
+print(f"Results: {len(response.results)}")
+```
+
+---
+
+## acancel_batch
+
+```python
+async def acancel_batch(
+    batch_id: str,
+    provider: str,
+    api_key: Optional[str] = None
+) -> bool
+```
+
+Cancel a batch job.
+
+<ParamField path="batch_id" type="str" required>
+  The batch ID to cancel.
+</ParamField>
+
+<ParamField path="provider" type="str" required>
+  The provider name (e.g., "openai", "together_ai", "fireworks_ai", "azure", "anthropic").
+</ParamField>
+
+<ParamField path="api_key" type="str">
+  Optional API key for the provider. If not provided, will use environment variables.
+</ParamField>
+
+<ResponseField name="return" type="bool">
+  True if cancellation was successful.
+</ResponseField>
+
+### Example
+
+```python
+from modaic.batch import acancel_batch
+
+success = await acancel_batch(
+    batch_id="batch_abc123",
+    provider="openai"
+)
+print(f"Cancelled: {success}")
+```
+
+---
+
+## supports_abatch
+
+```python
+def supports_abatch(lm_or_model: dspy.LM | str) -> bool
+```
+
+Check if the given LM or model supports batching.
+
+<ParamField path="lm_or_model" type="dspy.LM | str" required>
+  A dspy.LM instance or model string to check for batch support.
+</ParamField>
+
+<ResponseField name="return" type="bool">
+  True if the LM/model supports batching, False otherwise.
+</ResponseField>
+
+### Example
+
+```python
+import dspy
+from modaic.batch import supports_abatch
+
+lm = dspy.LM("openai/gpt-4o-mini")
+if supports_abatch(lm):
+    print("This model supports batch processing")
+
+# Or check by model string
+if supports_abatch("openai/gpt-4o-mini"):
+    print("OpenAI GPT-4o-mini supports batching")
+```

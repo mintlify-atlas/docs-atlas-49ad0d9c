@@ -1,0 +1,364 @@
+---
+title: "Batch Inference"
+description: "Process large datasets efficiently with batch inference across multiple LM providers"
+---
+
+Batch inference allows you to process large volumes of predictions efficiently and cost-effectively. Modaic supports batch processing across multiple providers including OpenAI, Anthropic, Together AI, and Fireworks AI.
+
+## Overview
+
+Batch inference is ideal for:
+- Processing large datasets where immediate results aren't required
+- Cost-effective inference (typically 50% cheaper than synchronous calls)
+- High-volume question answering tasks
+- Data labeling and classification at scale
+- Offline evaluation and testing
+
+<Info>
+  Batch requests are processed asynchronously and can take from minutes to hours depending on the provider and queue size.
+</Info>
+
+## Prerequisites
+
+Before starting, ensure you have:
+- Modaic SDK installed: `pip install modaic`
+- API keys for your chosen provider (OpenAI, Anthropic, Together AI, or Fireworks AI)
+- Python 3.9 or higher
+
+## Basic Usage
+
+<Steps>
+<Step title="Configure DSPy and create a predictor">
+
+Set up your language model and create a simple predictor:
+
+```python
+import asyncio
+import dspy
+from modaic.batch import abatch
+from modaic.batch.types import FailedPrediction
+
+# Configure DSPy with your chosen provider
+dspy.configure(
+    lm=dspy.LM("openai/gpt-4o-mini"),
+    adapter=dspy.ChatAdapter()
+)
+
+# Create a predictor with a signature
+predictor = dspy.Predict("question -> answer")
+```
+
+</Step>
+
+<Step title="Prepare your input data">
+
+Create a list of input dictionaries matching your signature:
+
+```python
+inputs = [
+    {"question": "What is the capital of France?"},
+    {"question": "What is 2 + 2?"},
+    {"question": "Who wrote Romeo and Juliet?"},
+    {"question": "What is the largest planet?"},
+    {"question": "Who painted the Mona Lisa?"},
+    {"question": "What is the speed of light?"}
+]
+```
+
+</Step>
+
+<Step title="Submit batch request">
+
+Use the `abatch()` function to process all inputs:
+
+```python
+async def main():
+    print("Submitting batch request...")
+    results = await abatch(predictor, inputs)
+    
+    # Process results
+    for i, res in enumerate(results):
+        pred = res.prediction
+        if isinstance(pred, FailedPrediction):
+            print(f"[{i}] FAILED: {pred.error}")
+        else:
+            print(f"[{i}] Q: {inputs[i]['question']}")
+            print(f"    A: {pred.answer}")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+</Step>
+</Steps>
+
+## Provider Examples
+
+<Tabs>
+  <Tab title="OpenAI">
+    <CodeGroup>
+    ```python openai_batch.py
+import asyncio
+import dspy
+from modaic.batch import abatch
+from modaic.batch.types import FailedPrediction
+
+async def main():
+    # Configure with OpenAI
+    dspy.configure(
+        lm=dspy.LM("openai/gpt-4o-mini"),
+        adapter=dspy.ChatAdapter()
+    )
+    
+    predictor = dspy.Predict("question -> answer")
+    
+    inputs = [
+        {"question": "What is the capital of France?"},
+        {"question": "What is 2 + 2?"},
+        {"question": "Who wrote Romeo and Juliet?"},
+        {"question": "What is the largest planet?"},
+        {"question": "Who painted the Mona Lisa?"},
+        {"question": "What is the speed of light?"},
+    ]
+    
+    print("Submitting batch request to OpenAI...")
+    results = await abatch(predictor, inputs)
+    
+    for i, res in enumerate(results):
+        pred = res.prediction
+        if isinstance(pred, FailedPrediction):
+            print(f"[{i}] FAILED: {pred.error}")
+        else:
+            print(f"[{i}] Q: {inputs[i]['question']}")
+            print(f"    A: {pred.answer}")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+    ```
+    </CodeGroup>
+    
+    <Note>
+      OpenAI batch processing typically completes within 24 hours and offers 50% cost savings.
+    </Note>
+  </Tab>
+  
+  <Tab title="Anthropic">
+    <CodeGroup>
+    ```python anthropic_batch.py
+import asyncio
+import dspy
+from modaic.batch import abatch
+from modaic.batch.types import FailedPrediction
+
+async def main():
+    # Configure with Anthropic
+    dspy.configure(
+        lm=dspy.LM("anthropic/claude-sonnet-4-20250514")
+    )
+    
+    predictor = dspy.Predict("question -> answer")
+    
+    inputs = [
+        {"question": "What is 2 + 2?"},
+        {"question": "What is the capital of France?"},
+        {"question": "Name a primary color."},
+    ]
+    
+    print("Submitting batch request to Anthropic...")
+    results = await abatch(
+        predictor,
+        inputs,
+        show_progress=True,
+        poll_interval=10.0,
+        max_poll_time="1h"
+    )
+    
+    for i, res in enumerate(results):
+        pred = res.prediction
+        if isinstance(pred, FailedPrediction):
+            print(f"[{i}] FAILED: {pred.error}")
+        else:
+            print(f"[{i}] Q: {inputs[i]['question']}")
+            print(f"    A: {pred.answer}")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+    ```
+    </CodeGroup>
+    
+    <Tip>
+      Use `show_progress=True` to see real-time status updates during processing.
+    </Tip>
+  </Tab>
+  
+  <Tab title="Together AI">
+    <CodeGroup>
+    ```python together_batch.py
+import asyncio
+import dspy
+from modaic.batch import abatch
+from modaic.batch.types import FailedPrediction
+
+async def main():
+    # Configure with Together AI
+    dspy.configure(
+        lm=dspy.LM("together_ai/meta-llama/Llama-3.3-70B-Instruct-Turbo"),
+        adapter=dspy.ChatAdapter()
+    )
+    
+    predictor = dspy.Predict("question -> answer")
+    
+    inputs = [
+        {"question": "What is the capital of France?"},
+        {"question": "What is 2 + 2?"},
+        {"question": "Who wrote Romeo and Juliet?"},
+        {"question": "How many planets are in the solar system?"},
+        {"question": "What is the speed of light?"},
+    ]
+    
+    print("Submitting batch request to Together AI...")
+    results = await abatch(predictor, inputs)
+    
+    for i, res in enumerate(results):
+        pred = res.prediction
+        if isinstance(pred, FailedPrediction):
+            print(f"[{i}] FAILED: {pred.error}")
+        else:
+            print(f"[{i}] Q: {inputs[i]['question']}")
+            print(f"    A: {pred.answer}")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+    ```
+    </CodeGroup>
+  </Tab>
+  
+  <Tab title="Fireworks AI">
+    <CodeGroup>
+    ```python fireworks_batch.py
+import asyncio
+import dspy
+from modaic.batch import abatch
+from modaic.batch.types import FailedPrediction
+
+async def main():
+    # Configure with Fireworks AI
+    dspy.configure(
+        lm=dspy.LM("fireworks_ai/accounts/fireworks/models/llama-v3p1-70b-instruct"),
+        adapter=dspy.ChatAdapter()
+    )
+    
+    predictor = dspy.Predict("question -> answer")
+    
+    inputs = [
+        {"question": "What is the capital of France?"},
+        {"question": "What is 2 + 2?"},
+        {"question": "Who wrote Romeo and Juliet?"},
+    ]
+    
+    print("Submitting batch request to Fireworks AI...")
+    results = await abatch(predictor, inputs)
+    
+    for i, res in enumerate(results):
+        pred = res.prediction
+        if isinstance(pred, FailedPrediction):
+            print(f"[{i}] FAILED: {pred.error}")
+        else:
+            print(f"[{i}] Q: {inputs[i]['question']}")
+            print(f"    A: {pred.answer}")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+    ```
+    </CodeGroup>
+  </Tab>
+</Tabs>
+
+## Advanced Configuration
+
+You can customize batch processing behavior with additional parameters:
+
+```python
+results = await abatch(
+    predictor,
+    inputs,
+    show_progress=True,      # Display progress bar
+    poll_interval=10.0,      # Check status every 10 seconds
+    max_poll_time="2h",      # Maximum wait time
+    batch_size=100           # Custom batch size
+)
+```
+
+## Error Handling
+
+Always check for failed predictions in your results:
+
+```python
+from modaic.batch.types import FailedPrediction
+
+successes = []
+failures = []
+
+for i, res in enumerate(results):
+    pred = res.prediction
+    if isinstance(pred, FailedPrediction):
+        failures.append({
+            "index": i,
+            "input": inputs[i],
+            "error": pred.error
+        })
+    else:
+        successes.append({
+            "index": i,
+            "input": inputs[i],
+            "output": pred
+        })
+
+print(f"Successes: {len(successes)}/{len(results)}")
+print(f"Failures: {len(failures)}/{len(results)}")
+
+# Retry failed predictions if needed
+if failures:
+    retry_inputs = [f["input"] for f in failures]
+    retry_results = await abatch(predictor, retry_inputs)
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Batch Size" icon="layer-group">
+    Use appropriate batch sizes (100-1000) for optimal processing. Larger batches may take longer but are more efficient.
+  </Card>
+  <Card title="Error Handling" icon="shield-check">
+    Always check for `FailedPrediction` instances and implement retry logic for critical applications.
+  </Card>
+  <Card title="Cost Optimization" icon="dollar-sign">
+    Batch inference is typically 50% cheaper than real-time inference. Use it for non-urgent tasks.
+  </Card>
+  <Card title="Monitoring" icon="chart-line">
+    Enable `show_progress=True` to track batch processing status and estimate completion time.
+  </Card>
+</CardGroup>
+
+## Performance Comparison
+
+| Provider | Typical Completion | Cost Savings | Max Batch Size |
+|----------|-------------------|--------------|----------------|
+| OpenAI | 24 hours | 50% | 50,000 |
+| Anthropic | 1-12 hours | 50% | 10,000 |
+| Together AI | Minutes-Hours | 30-50% | Varies |
+| Fireworks AI | Minutes-Hours | 30-50% | Varies |
+
+<Note>
+  Completion times and costs vary based on provider load and batch size. Check provider documentation for current limits.
+</Note>
+
+## Next Steps
+
+- Combine batch inference with [sentiment analysis](/examples/sentiment-analysis) for large-scale text classification
+- Explore [TableRAG](/examples/table-rag) for processing structured data in batches
+- Learn about [optimization techniques](/sdk_reference/modaic/optimize) to improve batch accuracy
+
+<Tip>
+  For time-sensitive applications, use synchronous inference. For large-scale data processing, batch inference offers significant cost savings.
+</Tip>

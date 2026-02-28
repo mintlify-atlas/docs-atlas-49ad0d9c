@@ -1,80 +1,270 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quick start
+description: Build and deploy your first Modaic program in 5 minutes
 ---
 
-## Get started in three steps
+## Overview
 
-Get your documentation site running locally and make your first customization.
+This guide walks you through creating a simple DSPy program with Modaic, saving it locally, and optionally sharing it on Modaic Hub.
 
-### Step 1: Set up your local environment
+## Create your first program
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+<Steps>
+  <Step title="Define your configuration">
+    Create a configuration class that extends `PrecompiledConfig`. This defines the parameters for your program:
 
-### Step 2: Deploy your changes
+    ```python
+    from modaic import PrecompiledConfig
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+    class WeatherConfig(PrecompiledConfig):
+        weather: str = "sunny"
+        location: str = "Tokyo"
+    ```
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+    <Info>
+      Configuration classes use Pydantic for validation and serialization, giving you type safety and automatic validation.
+    </Info>
+  </Step>
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+  <Step title="Create your program">
+    Define a program class that extends `PrecompiledProgram`:
 
-### Step 3: Go live
+    ```python
+    from modaic import PrecompiledProgram
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+    class WeatherProgram(PrecompiledProgram):
+        config: WeatherConfig
+
+        def __init__(self, config: WeatherConfig, **kwargs):
+            super().__init__(config, **kwargs)
+
+        def forward(self, query: str) -> str:
+            return f"The weather in {query} is {self.config.weather}."
+    ```
+
+    The `forward` method defines your program's logic. In this simple example, it returns a formatted string, but you can use DSPy predictors, chains of thought, or any other DSPy components.
+  </Step>
+
+  <Step title="Run your program">
+    Instantiate and run your program:
+
+    ```python
+    # Create the program with configuration
+    weather_program = WeatherProgram(WeatherConfig(weather="rainy"))
+
+    # Run the program
+    result = weather_program(query="Tokyo")
+    print(result)  # Output: The weather in Tokyo is rainy.
+    ```
+  </Step>
+</Steps>
+
+## Save and load programs
+
+### Save locally
+
+Save your program to disk for later use:
+
+```python
+# Save to a local directory
+weather_program.save_precompiled("./my-weather")
+```
+
+This creates two files:
+- `config.json` - Your program's configuration
+- `program.json` - The serialized program state (predictors, prompts, etc.)
+
+### Load locally
+
+Load your saved program using `AutoProgram`:
+
+```python
+from modaic import AutoProgram, AutoConfig
+
+# Load configuration
+cfg = AutoConfig.from_precompiled("./my-weather", local=True)
+
+# Load program
+loaded = AutoProgram.from_precompiled("./my-weather", local=True)
+print(loaded(query="Kyoto"))
+```
+
+<Note>
+  `AutoProgram` dynamically loads your program class from the saved state, so you don't need to import the original class definition.
+</Note>
+
+## Share on Modaic Hub
+
+Share your program with your team or the community:
+
+<Steps>
+  <Step title="Set up authentication">
+    ```bash
+    export MODAIC_TOKEN="<your-token>"
+    ```
+  </Step>
+
+  <Step title="Push to hub">
+    ```python
+    weather_program.push_to_hub("username/my-weather-program")
+    ```
+
+    <Info>
+      The format is `username/repo-name`. You can also specify branches and tags for version control.
+    </Info>
+  </Step>
+
+  <Step title="Load from hub">
+    Anyone with access can now load your program:
+
+    ```python
+    from modaic import AutoProgram
+
+    # Load the latest version
+    loaded = AutoProgram.from_precompiled("username/my-weather-program")
+
+    # Load a specific version
+    loaded = AutoProgram.from_precompiled(
+        "username/my-weather-program",
+        rev="v2.0.0"
+    )
+    ```
+  </Step>
+</Steps>
+
+## Working with DSPy predictors
+
+Here's a more realistic example using DSPy's `Predict` module:
+
+```python
+import dspy
+from modaic import PrecompiledProgram, PrecompiledConfig
+
+class SummarizeConfig(PrecompiledConfig):
+    lm: str = "openai/gpt-4o-mini"
+
+class SummarizeProgram(PrecompiledProgram):
+    config: SummarizeConfig
+
+    def __init__(self, config: SummarizeConfig, **kwargs):
+        super().__init__(config, **kwargs)
+        # Define a DSPy signature
+        self.predictor = dspy.Predict("question, context -> answer")
+        self.predictor.lm = dspy.LM(config.lm)
+
+    def forward(self, question: str, context: str) -> str:
+        return self.predictor(question=question, context=context)
+
+# Configure DSPy
+dspy.configure(lm=dspy.LM("openai/gpt-4o-mini"))
+
+# Create and run
+program = SummarizeProgram(SummarizeConfig())
+result = program(
+    question="What is the capital of France?",
+    context="France is a country in Europe. Paris is its capital city."
+)
+print(result.answer)
+```
+
+## Version control with branches and tags
+
+Modaic supports git-style versioning:
+
+<CodeGroup>
+```python Push to branch
+# Push to a development branch
+program.push_to_hub(
+    "username/my-program",
+    branch="dev",
+    commit_message="Add new feature"
+)
+```
+
+```python Create a release tag
+# Create a tagged release
+program.push_to_hub(
+    "username/my-program",
+    branch="main",
+    tag="v1.0.0",
+    commit_message="Release v1.0.0"
+)
+```
+
+```python Load specific version
+# Load from a specific branch
+dev_program = AutoProgram.from_precompiled(
+    "username/my-program",
+    rev="dev"
+)
+
+# Load from a specific tag
+stable_program = AutoProgram.from_precompiled(
+    "username/my-program",
+    rev="v1.0.0"
+)
+```
+</CodeGroup>
+
+## Batch processing
+
+Modaic includes built-in support for batch inference:
+
+```python
+import asyncio
+import dspy
+from modaic.batch.batch import abatch
+
+async def main():
+    # Configure DSPy
+    dspy.configure(
+        lm=dspy.LM("together_ai/meta-llama/Llama-3.3-70B-Instruct-Turbo"),
+        adapter=dspy.ChatAdapter(),
+    )
+
+    # Create a predictor
+    predictor = dspy.Predict("question -> answer")
+
+    # Batch inputs
+    inputs = [
+        {"question": "What is the capital of France?"},
+        {"question": "What is 2 + 2?"},
+        {"question": "Who wrote Romeo and Juliet?"},
+    ]
+
+    # Run batch request
+    results = await abatch(predictor, inputs)
+
+    # Process results
+    for i, res in enumerate(results):
+        print(f"Q: {inputs[i]['question']}")
+        print(f"A: {res.prediction.answer}")
+
+asyncio.run(main())
+```
+
+<Info>
+  Batch processing is especially useful for evaluation, data generation, and production workloads where you need to process many inputs efficiently.
+</Info>
 
 ## Next steps
 
-Now that you have your docs running, explore these key features:
+Now that you've built your first Modaic program, explore more advanced features:
 
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Configuration" icon="sliders" href="/configuration">
+    Learn about advanced configuration options
+  </Card>
+  
+  <Card title="Hub guide" icon="cloud" href="/hub">
+    Deep dive into hub features and versioning
+  </Card>
+  
+  <Card title="Retrievers" icon="database" href="/retrievers">
+    Add retrieval-augmented generation to your programs
+  </Card>
+  
+  <Card title="API reference" icon="code" href="/api-reference">
+    Explore the complete API documentation
+  </Card>
 </CardGroup>
-
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>

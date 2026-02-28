@@ -1,0 +1,454 @@
+---
+title: "TableRAG"
+description: "Build an intelligent table question-answering system with hybrid retrieval and SQL execution"
+---
+
+TableRAG is a sophisticated example that demonstrates how to build a question-answering system over tabular data using hybrid retrieval (vector search + SQL execution). It combines semantic search with structured querying for accurate answers.
+
+## Overview
+
+TableRAG showcases several advanced Modaic features:
+- **PrecompiledProgram** for reusable, configurable agents
+- **Indexer** for managing both vector and SQL databases
+- **ReAct** agents with tool calling for multi-step reasoning
+- **Hybrid retrieval** combining semantic search and SQL execution
+- **Context management** with Table and TableFile objects
+
+<Info>
+  This example is ideal for applications requiring structured data analysis, business intelligence, and complex table-based question answering.
+</Info>
+
+## Architecture
+
+TableRAG uses a multi-stage pipeline:
+
+1. **Retrieval**: Find relevant table chunks using vector similarity
+2. **SQL Generation**: Convert natural language queries to SQL
+3. **Execution**: Run SQL queries on the table database
+4. **Synthesis**: Combine results with original content for final answers
+
+## Prerequisites
+
+Before starting, ensure you have:
+- Modaic SDK: `pip install modaic`
+- OpenAI API key for embeddings and LM
+- Pinecone API key for reranking (optional but recommended)
+- Table data in Excel (.xlsx) or CSV format
+
+## Project Structure
+
+```
+TableRAG/
+├── program/
+│   ├── program.py    # Main TableRAG program
+│   ├── indexer.py    # Custom indexer with vector + SQL
+│   └── config.py     # Configuration settings
+├── tables.db         # SQLite database for tables
+└── index.db          # Milvus vector database
+```
+
+## Implementation
+
+<Steps>
+<Step title="Define configuration">
+
+Create a configuration class for your TableRAG program:
+
+```python program/config.py
+from modaic.precompiled import PrecompiledConfig
+
+class TableRAGConfig(PrecompiledConfig):
+    k_recall: int = 50      # Number of chunks to retrieve
+    k_rerank: int = 5       # Number of chunks after reranking
+```
+
+</Step>
+
+<Step title="Build the custom indexer">
+
+Create an indexer that manages both vector and SQL databases:
+
+```python program/indexer.py
+import os
+from typing import List, Literal, Iterator
+from modaic import Indexer
+from modaic.context import Text, TableFile
+from modaic.databases import VectorDatabase, SQLDatabase
+from modaic.indexing import Embedder, PineconeReranker
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+class TableFileChunk(TableFile):
+    content: str
+    
+    def embedme(self) -> str:
+        return self.content
+
+class TableRAGIndexer(Indexer):
+    def __init__(self, vector_db: VectorDatabase, sql_db: SQLDatabase, **kwargs):
+        super().__init__(**kwargs)
+        self.embedder = Embedder(model="openai/text-embedding-3-small")
+        self.vector_database = vector_db
+        self.sql_db = sql_db
+        self.reranker = PineconeReranker(
+            model="bge-reranker-v2-m3",
+            api_key=os.getenv("PINECONE_API_KEY")
+        )
+        self.text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=1000,
+            chunk_overlap=200
+        )
+        
+        # Initialize vector collection
+        if not self.vector_database.has_collection("table_rag"):
+            self.vector_database.create_collection(
+                "table_rag",
+                Text.schema(),
+                embedder=self.embedder
+            )
+    
+    def retrieve(self, user_query: str, k_recall: int = 10, 
+                k_rerank: int = 5, type: Literal["table", "text", "all"] = "all"):
+        # Get initial results via vector search
+        results = self.recall(user_query, k_recall, type)
+        
+        # Extract text/markdown for reranking
+        records = [
+            (result["context_schema"].text, result["context_schema"])
+            if result["context_schema"].context_class == "Text"
+            else (result["context_schema"].metadata["md_chunk"], result["context_schema"])
+            for result in results
+        ]
+        
+        # Rerank and return top results
+        reranked = self.reranker(user_query, records, k_rerank)
+        return [r[1] for r in reranked]
+    
+    def sql_query(self, query: str) -> str:
+        """Execute SQL query and return results."""
+        self.last_query = query
+        try:
+            return str(self.sql_db.fetchall(query))
+        except Exception as e:
+            return f"Error executing SQL query: {e}"
+    
+    def get_table(self, table_id: str):
+        return self.sql_db.get_table(table_id)
+```
+
+</Step>
+
+<Step title="Define DSPy signatures">
+
+Create signatures for each reasoning step:
+
+```python program/program.py
+import dspy
+
+class NL2SQL(dspy.Signature):
+    """Convert natural language to SQL based on table schema."""
+    
+    schema_list = dspy.InputField(desc="Table schemas in JSON format")
+    user_query = dspy.InputField(desc="The user's natural language query")
+    answer = dspy.OutputField(desc="SQL query using MySQL syntax")
+
+class Main(dspy.Signature):
+    """Main reasoning agent that decomposes queries and calls tools."""
+    
+    table_content = dspy.InputField(desc="Table content in Markdown format")
+    user_input_query = dspy.InputField(desc="User's question about the table")
+    answer = dspy.OutputField(desc="Final answer to the user's question")
+
+class SubQuerySummarizer(dspy.Signature):
+    """Combine SQL results with original content for final answer."""
+    
+    original_content = dspy.InputField(desc="Original table content in Markdown")
+    table_schema = dspy.InputField(desc="Table schema")
+    generated_sql = dspy.InputField(desc="Generated SQL query")
+    sql_execute_result = dspy.InputField(desc="SQL execution results")
+    user_query = dspy.InputField(desc="User's original question")
+    answer = dspy.OutputField(desc="Final synthesized answer")
+```
+
+</Step>
+
+<Step title="Implement the TableRAG program">
+
+Build the main program with ReAct agents and tools:
+
+```python program/program.py (continued)
+import json
+from typing import Optional
+from modaic.precompiled import PrecompiledProgram
+from modaic.databases import MilvusBackend, SQLiteBackend
+
+class TableRAGProgram(PrecompiledProgram):
+    config: TableRAGConfig
+    
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Main agent with tool for solving subqueries
+        self.main = dspy.ReAct(Main, tools=[self.solve_subquery])
+        # SQL generation agent with SQL execution tool
+        self.nl2sql = dspy.ReAct(NL2SQL, tools=[self.indexer.sql_query])
+        # Summarizer to combine results
+        self.subquery_summarizer = dspy.Predict(SubQuerySummarizer)
+        # Set the language model
+        self.set_lm(dspy.LM("openai/gpt-4o-mini"))
+    
+    def forward(self, user_query: str, table_id: Optional[str] = None, **kwargs) -> str:
+        # Optionally specify which table to query
+        if table_id:
+            self.user_query = f"{user_query}. The table is in {table_id}"
+        else:
+            self.user_query = user_query
+        
+        # Retrieve relevant table chunks
+        related_table_serialized = self.indexer.retrieve(
+            self.user_query,
+            k_recall=self.config.k_recall,
+            k_rerank=self.config.k_rerank,
+            type="table"
+        )[0]  # Get top result
+        
+        # Load full table and convert to markdown
+        related_table = self.indexer.get_table(
+            related_table_serialized.metadata["schema"]["table_name"]
+        )
+        self.table_md = related_table.markdown()
+        self.table_schema = json.dumps(related_table.metadata["schema"])
+        
+        # Run main ReAct agent
+        return self.main(
+            user_input_query=user_query,
+            table_content=self.table_md
+        )
+    
+    def solve_subquery(self, sub_query: str) -> str:
+        """Tool for solving subqueries using SQL execution."""
+        # Generate SQL from natural language
+        sql_result = self.nl2sql(
+            schema_list=self.table_schema,
+            user_query=sub_query
+        )
+        
+        # Combine SQL result with original content
+        generated_sql = self.indexer.last_query
+        return self.subquery_summarizer(
+            original_content=self.table_md,
+            table_schema=self.table_schema,
+            generated_sql=generated_sql,
+            sql_execute_result=sql_result,
+            user_query=self.user_query
+        )
+```
+
+</Step>
+
+<Step title="Initialize and use the program">
+
+Create the indexer and program, then query your tables:
+
+```python
+from modaic.databases import MilvusBackend, SQLiteBackend
+
+# Initialize indexer with databases
+indexer = TableRAGIndexer(
+    vector_db=MilvusBackend.from_local("index.db"),
+    sql_db=SQLiteBackend(db_path="tables.db")
+)
+
+# Create the program
+program = TableRAGProgram(
+    config=TableRAGConfig(k_recall=50, k_rerank=5),
+    indexer=indexer
+)
+
+# Query the tables
+result = program(
+    user_query="What is the total revenue for Q4 2023?"
+)
+print(result)
+
+# Deploy to hub for reuse
+program.push_to_hub("your-username/table-rag")
+```
+
+</Step>
+</Steps>
+
+## Complete Example
+
+<CodeGroup>
+```python program/config.py
+from modaic.precompiled import PrecompiledConfig
+
+class TableRAGConfig(PrecompiledConfig):
+    k_recall: int = 50
+    k_rerank: int = 5
+```
+
+```python main.py
+import dspy
+from modaic.databases import MilvusBackend, SQLiteBackend
+from program.program import TableRAGProgram
+from program.indexer import TableRAGIndexer
+from program.config import TableRAGConfig
+
+# Initialize databases
+vector_db = MilvusBackend.from_local("index.db")
+sql_db = SQLiteBackend(db_path="tables.db")
+
+# Create indexer
+indexer = TableRAGIndexer(
+    vector_db=vector_db,
+    sql_db=sql_db
+)
+
+# Create and configure program
+config = TableRAGConfig(k_recall=50, k_rerank=5)
+program = TableRAGProgram(config=config, indexer=indexer)
+
+# Example queries
+queries = [
+    "What is the total revenue for Q4 2023?",
+    "Which product had the highest sales in December?",
+    "Calculate the average order value for premium customers",
+    "How many orders were placed in the last quarter?"
+]
+
+for query in queries:
+    print(f"\nQuery: {query}")
+    result = program(user_query=query)
+    print(f"Answer: {result}")
+    print("-" * 80)
+
+# Deploy to hub
+program.push_to_hub("your-username/table-rag")
+print("\n✓ Program deployed to Modaic Hub!")
+```
+</CodeGroup>
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Hybrid Retrieval" icon="magnifying-glass">
+    Combines vector search for semantic understanding with SQL execution for precise queries.
+  </Card>
+  <Card title="ReAct Agents" icon="robot">
+    Uses reasoning and acting agents that can decompose complex queries into manageable steps.
+  </Card>
+  <Card title="Tool Calling" icon="wrench">
+    Agents automatically call SQL execution tools when needed for structured queries.
+  </Card>
+  <Card title="Reranking" icon="ranking-star">
+    Uses Pinecone reranker to improve retrieval quality and relevance.
+  </Card>
+</CardGroup>
+
+## Example Queries and Results
+
+Here are some example queries you can run with TableRAG:
+
+| Query Type | Example Query | Reasoning Approach |
+|------------|---------------|--------------------|
+| Aggregation | "What is the total revenue?" | SQL SUM function |
+| Filtering | "Show orders above $1000" | SQL WHERE clause |
+| Comparison | "Which product sold most?" | SQL ORDER BY + LIMIT |
+| Complex | "Revenue by region in Q4" | Multi-step decomposition |
+
+<Tip>
+  TableRAG automatically decides whether to decompose queries into subqueries based on complexity.
+</Tip>
+
+## Advanced Configuration
+
+Customize retrieval and generation parameters:
+
+```python
+config = TableRAGConfig(
+    k_recall=100,        # Retrieve more chunks for complex queries
+    k_rerank=10          # Keep more after reranking
+)
+
+program = TableRAGProgram(
+    config=config,
+    indexer=indexer
+)
+
+# Override LM for specific components
+program.set_lm(dspy.LM("openai/gpt-4o"))  # Use more capable model
+```
+
+## Ingesting Table Data
+
+To add tables to your indexer:
+
+```python
+from modaic.context import TableFile
+from modaic.storage import FileStore
+
+# Create file store
+file_store = FileStore(base_path="./data")
+
+# Ingest Excel files
+table_file = TableFile.from_file(
+    "sales_data.xlsx",
+    file_store=file_store,
+    file_type="xlsx"
+)
+
+# Add to databases
+indexer._ingest_files(["sales_data.xlsx"])
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Optimize Chunk Size" icon="scissors">
+    Use chunk sizes of 500-1500 characters for tables. Too small loses context, too large reduces precision.
+  </Accordion>
+  
+  <Accordion title="Schema Documentation" icon="book">
+    Include clear column descriptions in your table metadata to improve SQL generation accuracy.
+  </Accordion>
+  
+  <Accordion title="Reranking" icon="arrow-up-arrow-down">
+    Always use reranking for better retrieval quality. Pinecone's bge-reranker-v2-m3 works well for tables.
+  </Accordion>
+  
+  <Accordion title="Error Handling" icon="triangle-exclamation">
+    Implement fallback logic in `sql_query()` to handle malformed SQL or database errors gracefully.
+  </Accordion>
+</AccordionGroup>
+
+## Performance Considerations
+
+- **Vector DB**: Use Milvus for large-scale deployments, SQLite for development
+- **Embeddings**: `text-embedding-3-small` offers good balance of speed and quality
+- **Reranking**: Optional but significantly improves accuracy (adds ~100-200ms per query)
+- **Caching**: Consider caching frequently accessed table schemas and results
+
+## Next Steps
+
+- Explore [batch processing](/examples/batch-inference) for analyzing multiple queries efficiently
+- Add [observability](/sdk_reference/modaic/observability) to track query patterns and performance
+- Learn about [optimization](/sdk_reference/modaic/optimize) to improve accuracy on your specific tables
+- Deploy to production with the [Modaic Hub](/sdk_reference/modaic/hub)
+
+<Warning>
+  Ensure your SQL database has appropriate indexes on frequently queried columns for optimal performance.
+</Warning>
+
+## Troubleshooting
+
+**Issue**: SQL generation produces incorrect queries
+
+**Solution**: Improve table schema documentation with clear column descriptions and example values.
+
+**Issue**: Retrieval returns irrelevant table chunks
+
+**Solution**: Increase `k_recall` and `k_rerank` values, or improve your chunking strategy.
+
+**Issue**: Queries time out
+
+**Solution**: Optimize SQL queries with indexes, or increase `max_poll_time` for complex operations.

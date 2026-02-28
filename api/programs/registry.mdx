@@ -1,0 +1,237 @@
+---
+title: Program Registry
+description: API reference for program registry functions and decorators
+---
+
+The registry module provides a registration system for builtin programs, indexers, and configs. This allows for lazy loading and organization of modaic components.
+
+## builtin_program
+
+```python
+def builtin_program(name: str) -> Callable[[Type], Type]
+```
+
+Decorator to register a builtin program in the global registry.
+
+This decorator registers a class as a builtin program that can be loaded by name. It's useful for creating a library of reusable programs that can be discovered and instantiated dynamically.
+
+<ParamField path="name" type="str" required>
+  The name to register the program under. This name will be used to retrieve the program later.
+</ParamField>
+
+<ResponseField name="return" type="Callable[[Type], Type]">
+  A decorator function that registers the class and returns it unchanged.
+</ResponseField>
+
+### Example
+
+```python
+from modaic.programs.registry import builtin_program
+import dspy
+
+@builtin_program("qa_system")
+class QuestionAnswerSystem(dspy.Module):
+    def __init__(self):
+        super().__init__()
+        self.predict = dspy.Predict("question -> answer")
+    
+    def forward(self, question):
+        return self.predict(question=question)
+
+# Later, retrieve the program by name
+from modaic.programs.registry import ProgramRegistry, Key
+
+QAClass = ProgramRegistry.get(Key("qa_system", "program"))
+qa = QAClass()
+```
+
+---
+
+## builtin_indexer
+
+```python
+def builtin_indexer(name: str) -> Callable[[Type], Type]
+```
+
+Decorator to register a builtin indexer in the global registry.
+
+Indexers are components that process and index data for retrieval. This decorator allows you to register custom indexers that can be loaded by name.
+
+<ParamField path="name" type="str" required>
+  The name to register the indexer under.
+</ParamField>
+
+<ResponseField name="return" type="Callable[[Type], Type]">
+  A decorator function that registers the class and returns it unchanged.
+</ResponseField>
+
+### Example
+
+```python
+from modaic.programs.registry import builtin_indexer
+
+@builtin_indexer("custom_indexer")
+class CustomIndexer:
+    def __init__(self, documents):
+        self.documents = documents
+    
+    def index(self):
+        # Custom indexing logic
+        pass
+
+# Retrieve later
+from modaic.programs.registry import ProgramRegistry, Key
+
+IndexerClass = ProgramRegistry.get(Key("custom_indexer", "indexer"))
+indexer = IndexerClass(documents=[...])
+```
+
+---
+
+## builtin_config
+
+```python
+def builtin_config(name: str) -> Callable[[Type], Type]
+```
+
+Decorator to register a builtin config class in the global registry.
+
+Config classes define the configuration schema for programs. This decorator allows you to register custom config classes.
+
+<ParamField path="name" type="str" required>
+  The name to register the config under.
+</ParamField>
+
+<ResponseField name="return" type="Callable[[Type], Type]">
+  A decorator function that registers the class and returns it unchanged.
+</ResponseField>
+
+### Example
+
+```python
+from modaic.programs.registry import builtin_config
+from pydantic import BaseModel
+
+@builtin_config("qa_config")
+class QAConfig(BaseModel):
+    temperature: float = 0.7
+    max_tokens: int = 100
+    model: str = "gpt-4o-mini"
+
+# Retrieve later
+from modaic.programs.registry import ProgramRegistry, Key
+
+ConfigClass = ProgramRegistry.get(Key("qa_config", "config"))
+config = ConfigClass(temperature=0.5)
+```
+
+---
+
+## Registry Class
+
+```python
+class Registry:
+    def register(self, key: Key, cls: Type) -> None
+    def freeze(self) -> None
+    def get(self, key: Key) -> Type
+```
+
+The Registry class manages the registration and retrieval of classes.
+
+### Methods
+
+#### register
+
+Register a class under a specific key.
+
+<ParamField path="key" type="Key" required>
+  A Key namedtuple containing `name` and `type` fields.
+</ParamField>
+
+<ParamField path="cls" type="Type" required>
+  The class to register.
+</ParamField>
+
+**Raises:**
+- `RuntimeError`: If the registry is frozen
+- `KeyError`: If the key is already registered
+- `TypeError`: If cls is not a class
+
+#### freeze
+
+Freeze the registry to prevent further registrations.
+
+This is typically called after all builtin components have been registered to ensure the registry remains stable.
+
+#### get
+
+Retrieve a registered class by key.
+
+<ParamField path="key" type="Key" required>
+  A Key namedtuple containing `name` and `type` fields.
+</ParamField>
+
+<ResponseField name="return" type="Type">
+  The registered class.
+</ResponseField>
+
+**Raises:**
+- `KeyError`: If the key is not found in the registry
+- `TypeError`: If the resolved object is not a class
+
+---
+
+## Key
+
+```python
+class Key(NamedTuple):
+    name: str
+    type: str
+```
+
+A namedtuple used as a registry key.
+
+<ParamField path="name" type="str" required>
+  The name of the registered component.
+</ParamField>
+
+<ParamField path="type" type="str" required>
+  The type of component (e.g., "program", "indexer", "config").
+</ParamField>
+
+### Example
+
+```python
+from modaic.programs.registry import Key, ProgramRegistry
+
+# Create a key
+key = Key(name="my_program", type="program")
+
+# Use with registry
+MyProgramClass = ProgramRegistry.get(key)
+```
+
+---
+
+## ProgramRegistry
+
+```python
+ProgramRegistry: Registry
+```
+
+The global registry instance for all builtin programs, indexers, and configs.
+
+This is a singleton Registry instance that is used by all the decorator functions (`builtin_program`, `builtin_indexer`, `builtin_config`).
+
+### Example
+
+```python
+from modaic.programs.registry import ProgramRegistry, Key
+
+# Get a registered program
+key = Key("my_program", "program")
+MyProgram = ProgramRegistry.get(key)
+
+# Instantiate it
+program = MyProgram()
+```

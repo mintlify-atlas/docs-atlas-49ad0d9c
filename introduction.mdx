@@ -1,0 +1,93 @@
+---
+title: Introduction to Modaic
+description: A Python SDK for composing and maintaining DSPy applications with versioning and hub support
+---
+
+## What is Modaic?
+
+Modaic (Modular + Mosaic) is a Python framework that helps you compose and maintain production-ready DSPy applications. Built on top of DSPy, Modaic adds essential features for versioning, sharing, and reproducing your LLM programs.
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="Hub support" icon="cloud">
+    Load and share precompiled DSPy programs from Modaic Hub with version control
+  </Card>
+  
+  <Card title="Precompiled programs" icon="code">
+    Statically defined programs with explicit configuration and type safety
+  </Card>
+  
+  <Card title="Auto loading" icon="wand-magic-sparkles">
+    Dynamically load programs from hub or local repositories with AutoProgram
+  </Card>
+  
+  <Card title="Version control" icon="code-branch">
+    Track changes to code, prompts, and configurations with git-based versioning
+  </Card>
+  
+  <Card title="Batch processing" icon="list">
+    Built-in support for batch inference across multiple LLM providers
+  </Card>
+  
+  <Card title="Reproducibility" icon="rotate">
+    Save everything needed to reproduce optimization runs - architecture, hyperparameters, prompts, and datasets
+  </Card>
+</CardGroup>
+
+## Why Modaic?
+
+DSPy is powerful for building LLM programs, but production applications need more:
+
+- **Version control**: Track changes to prompts and code as your program evolves
+- **Sharing**: Collaborate with your team by sharing programs through the hub
+- **Reproducibility**: Never lose your optimization progress - save and restore complete program states
+- **Configuration management**: Cleanly separate program logic from configuration
+- **Deployment**: Easy serialization and loading for production deployments
+
+## How it works
+
+Modaic extends DSPy with two main abstractions:
+
+### PrecompiledProgram
+
+Statically defined programs with explicit configuration:
+
+```python
+from modaic import PrecompiledProgram, PrecompiledConfig
+
+class WeatherConfig(PrecompiledConfig):
+    weather: str = "sunny"
+
+class WeatherProgram(PrecompiledProgram):
+    config: WeatherConfig
+
+    def __init__(self, config: WeatherConfig, **kwargs):
+        super().__init__(config, **kwargs)
+
+    def forward(self, query: str) -> str:
+        return f"The weather in {query} is {self.config.weather}."
+```
+
+### AutoProgram
+
+Dynamically load programs from hub or local storage:
+
+```python
+from modaic import AutoProgram
+
+program = AutoProgram.from_precompiled("username/weather-program", rev="v2.0.0")
+result = program(query="Tokyo")
+```
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Install Modaic using uv or pip
+  </Card>
+  
+  <Card title="Quick start" icon="rocket" href="/quickstart">
+    Build your first Modaic program in 5 minutes
+  </Card>
+</CardGroup>

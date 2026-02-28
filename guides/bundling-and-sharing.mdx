@@ -1,0 +1,357 @@
+---
+title: Bundling and Sharing
+description: Package and share your programs on Modaic Hub with push_to_hub
+---
+
+## Overview
+
+Modaic Hub provides version-controlled storage for your DSPy programs. The `push_to_hub()` method handles packaging, versioning, and publishing.
+
+## Basic Push to Hub
+
+<Steps>
+  <Step title="Create Your Program">
+    Start with a working program:
+
+    ```python
+    import dspy
+    from modaic.precompiled import PrecompiledProgram, PrecompiledConfig
+
+    class MyConfig(PrecompiledConfig):
+        temperature: float = 0.7
+
+    class MyProgram(PrecompiledProgram):
+        config: MyConfig
+
+        def __init__(self, config: MyConfig, **kwargs):
+            super().__init__(config, **kwargs)
+            self.predictor = dspy.Predict("question -> answer")
+            self.predictor.lm = dspy.LM(config.lm)
+
+        def forward(self, question: str):
+            return self.predictor(question=question)
+    ```
+  </Step>
+
+  <Step title="Set Modaic Token">
+    Configure your access token:
+
+    ```python
+    from modaic_client import settings
+
+    settings.modaic_token = "your-modaic-access-token"
+    ```
+
+    Or set it as an environment variable:
+    ```bash
+    export MODAIC_TOKEN="your-modaic-access-token"
+    ```
+  </Step>
+
+  <Step title="Push to Hub">
+    Push your program to the hub:
+
+    ```python
+    config = MyConfig(temperature=0.7)
+    program = MyProgram(config=config)
+
+    # Push to hub
+    commit = program.push_to_hub(
+        repo_path="username/my-program",
+        commit_message="Initial release"
+    )
+
+    print(f"Published: {commit}")  # username/my-program@abc123
+    ```
+  </Step>
+</Steps>
+
+## Push Options
+
+### With Code (Dynamic Loading)
+
+Include your source code for `AutoProgram` loading:
+
+```python
+commit = program.push_to_hub(
+    repo_path="username/my-program",
+    with_code=True,  # Include source code
+    commit_message="Add source code for dynamic loading"
+)
+```
+
+<Note>
+`with_code=True` generates an `auto_classes.json` file that maps `AutoProgram`, `AutoConfig`, and `AutoRetriever` to your classes. This enables dynamic loading without importing your code. See hub.py:87-130.
+</Note>
+
+### Private Repositories
+
+Create a private repository:
+
+```python
+commit = program.push_to_hub(
+    repo_path="username/my-private-program",
+    private=True,  # Make repository private
+    commit_message="Private release"
+)
+```
+
+### Branches and Tags
+
+Push to specific branches or create tags:
+
+```python
+# Push to development branch
+commit = program.push_to_hub(
+    repo_path="username/my-program",
+    branch="development",
+    commit_message="Experimental features"
+)
+
+# Push and create a version tag
+commit = program.push_to_hub(
+    repo_path="username/my-program",
+    tag="v1.0.0",
+    commit_message="Release version 1.0.0"
+)
+```
+
+<Warning>
+Branch names must not include `/`. Use simple names like `"main"` or `"development"`, not `"origin/main"`. See hub.py:137-140.
+</Warning>
+
+### Custom Access Token
+
+Override the default token:
+
+```python
+commit = program.push_to_hub(
+    repo_path="username/my-program",
+    access_token="specific-token",
+    commit_message="Push with custom token"
+)
+```
+
+### Metadata
+
+Add metadata to your program's README:
+
+```python
+commit = program.push_to_hub(
+    repo_path="username/my-program",
+    metadata={
+        "version": "1.0.0",
+        "task": "text-classification",
+        "dataset": "imdb"
+    }
+)
+```
+
+Metadata is added to the README.md frontmatter.
+
+## Pushing Retrievers
+
+Retrievers can be pushed independently:
+
+```python
+from modaic.precompiled import Retriever
+
+class MyRetriever(Retriever):
+    config: MyConfig
+
+    def retrieve(self, query: str):
+        # Implementation
+        pass
+
+retriever = MyRetriever(config=config)
+
+commit = retriever.push_to_hub(
+    repo_path="username/my-retriever",
+    with_code=True,
+    commit_message="Initial retriever release"
+)
+```
+
+## Understanding the Push Process
+
+When you call `push_to_hub()`, Modaic:
+
+1. **Creates a sync directory** with your program files
+2. **Initializes a git repository** in the staging area
+3. **Saves program state** to `program.json` (with secrets masked)
+4. **Saves configuration** to `config.json`
+5. **Optionally includes source code** if `with_code=True`
+6. **Creates or updates the remote repository**
+7. **Commits and pushes changes** to the specified branch
+8. **Returns a Commit object** with repo path and SHA
+
+<Tip>
+The first push creates the repository automatically. Subsequent pushes update it. See hub.py:87-223.
+</Tip>
+
+## Secret Handling
+
+API keys and secrets are automatically masked:
+
+```python
+# Secrets in program.json are replaced with "********"
+# Original: {"lm": {"api_key": "sk-abc123..."}}
+# Saved: {"lm": {"api_key": "********"}}
+```
+
+Common secrets that are masked:
+- `api_key`
+- `hf_token`
+
+When loading, you must provide the actual values. See precompiled.py:532-561.
+
+## Version Control Workflow
+
+### Development Workflow
+
+```python
+# 1. Develop on a feature branch
+program.push_to_hub(
+    repo_path="username/my-program",
+    branch="feature/new-signature",
+    commit_message="Add new signature"
+)
+
+# 2. Test and iterate
+program = AutoProgram.from_precompiled(
+    "username/my-program",
+    rev="feature/new-signature"
+)
+# Test...
+
+# 3. Merge to main
+program.push_to_hub(
+    repo_path="username/my-program",
+    branch="main",
+    commit_message="Merge feature branch"
+)
+
+# 4. Tag release
+program.push_to_hub(
+    repo_path="username/my-program",
+    tag="v1.1.0",
+    commit_message="Release v1.1.0"
+)
+```
+
+### Tracking Source Commits
+
+Programs loaded with `AutoProgram` track their source:
+
+```python
+# Load and modify
+program = AutoProgram.from_precompiled("username/original-program")
+
+# program._source_commit contains the original commit
+# Push to a new branch - it will start from the source commit
+program.push_to_hub(
+    repo_path="username/original-program",
+    branch="my-improvements",
+    commit_message="Add improvements"
+)
+```
+
+See hub.py:202-206 for branch creation from source commits.
+
+## Complete Example: Publishing a TableRAG Program
+
+```python
+import dspy
+from modaic.precompiled import PrecompiledProgram, PrecompiledConfig
+from modaic_client import settings
+
+# Configure authentication
+settings.modaic_token = "your-token"
+
+# Define config
+class TableRAGConfig(PrecompiledConfig):
+    k_recall: int = 50
+    k_rerank: int = 5
+
+# Define program
+class TableRAGProgram(PrecompiledProgram):
+    config: TableRAGConfig
+
+    def __init__(self, config: TableRAGConfig, **kwargs):
+        super().__init__(config, **kwargs)
+        self.predictor = dspy.Predict("query -> answer")
+
+    def forward(self, query: str):
+        return self.predictor(query=query)
+
+# Create and push
+config = TableRAGConfig(k_recall=50, k_rerank=5)
+program = TableRAGProgram(config=config)
+
+commit = program.push_to_hub(
+    repo_path="username/table-rag",
+    with_code=True,
+    commit_message="Initial TableRAG release",
+    private=False,
+    metadata={
+        "task": "table-qa",
+        "version": "1.0.0"
+    }
+)
+
+print(f"Published at: {commit}")
+```
+
+## Repository Structure
+
+After pushing with `with_code=True`, your hub repo contains:
+
+```
+username/my-program/
+├── program.json           # Serialized DSPy module state
+├── config.json           # Configuration parameters
+├── auto_classes.json     # Class mappings for AutoProgram
+├── README.md             # Auto-generated with metadata
+└── <your-source-code>/   # Python source files
+```
+
+Without code (`with_code=False`):
+
+```
+username/my-program/
+├── program.json
+├── config.json
+└── README.md
+```
+
+## Troubleshooting
+
+### AuthenticationError: settings.modaic_token is not set
+
+Set your access token:
+
+```python
+from modaic_client import settings
+settings.modaic_token = "your-token"
+```
+
+### ModaicError: Nothing to commit
+
+You tried to push without any changes. Make modifications to your program before pushing again.
+
+### ModaicError: tag already exists
+
+The tag name is already used. Choose a different tag or remove the existing one.
+
+### Repository creation fails
+
+Verify:
+- Your access token is valid
+- You have permission to create repositories
+- The repo path format is `"username/repo"` or `"org/repo"`
+
+## Next Steps
+
+- Learn about [batch processing](/guides/batch-processing) for efficient inference
+- Explore [observability](/guides/observability) to track program usage
+- See [loading programs](/guides/loading-programs) to use your published programs

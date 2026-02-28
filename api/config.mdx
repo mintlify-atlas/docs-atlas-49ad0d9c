@@ -1,0 +1,402 @@
+---
+title: "Configuration"
+description: "Configure Modaic client settings and behavior"
+---
+
+## Overview
+
+The Modaic client provides configuration functions to customize API endpoints, authentication, caching, and tracking behavior. Configuration is managed through the `settings` object and helper functions.
+
+## configure
+
+```python
+configure(
+    modaic_cache: Optional[str] = None,
+    modaic_token: Optional[str] = None,
+    modaic_git_url: Optional[str] = None,
+    modaic_api_url: Optional[str] = None,
+    track: Optional[bool] = None
+) -> None
+```
+
+Configures global settings for the Modaic client. This function should be called before using any other Modaic functionality.
+
+<ParamField path="modaic_cache" type="str" optional>
+  Directory path for caching Modaic data. Defaults to platform-specific cache directory:
+  - Linux/macOS: `~/.cache/modaic`
+  - Windows: `%LOCALAPPDATA%\modaic`
+</ParamField>
+
+<ParamField path="modaic_token" type="str" optional>
+  API token for authentication. Can also be set via the `MODAIC_TOKEN` environment variable.
+</ParamField>
+
+<ParamField path="modaic_git_url" type="str" optional>
+  Base URL for the Modaic Git service. Default: `https://git.modaic.dev`
+</ParamField>
+
+<ParamField path="modaic_api_url" type="str" optional>
+  Base URL for the Modaic API. Default: `https://api.modaic.dev`
+</ParamField>
+
+<ParamField path="track" type="bool" optional>
+  Enable or disable usage tracking. Can also be set via the `MODAIC_TRACK` environment variable.
+</ParamField>
+
+```python
+from modaic_client import configure
+
+# Configure with custom settings
+configure(
+    modaic_token="your_api_token_here",
+    modaic_cache="/custom/cache/path",
+    track=False
+)
+```
+
+```python
+from modaic_client import configure
+
+# Configure only specific settings
+configure(modaic_token="your_api_token_here")
+
+# Or configure multiple settings
+configure(
+    modaic_token="your_api_token_here",
+    modaic_api_url="https://custom-api.example.com",
+    track=True
+)
+```
+
+## track
+
+```python
+track() -> None
+```
+
+Enables usage tracking for telemetry and analytics. This helps improve the Modaic service by collecting anonymous usage data.
+
+```python
+from modaic_client import track
+
+# Enable tracking
+track()
+```
+
+<Note>
+  Tracking is disabled by default. You can also enable it by setting the `MODAIC_TRACK` environment variable to `true` or by calling `configure(track=True)`.
+</Note>
+
+## settings
+
+The global `settings` object contains all configuration values and provides properties for accessing derived paths and URLs.
+
+### Accessing Settings
+
+```python
+from modaic_client.config import settings
+
+# Access current configuration
+print(f"API URL: {settings.modaic_api_url}")
+print(f"Git URL: {settings.modaic_git_url}")
+print(f"Cache: {settings.modaic_cache}")
+print(f"Token configured: {settings.modaic_token is not None}")
+print(f"Tracking enabled: {settings.track}")
+```
+
+### Configuration Fields
+
+<ResponseField name="modaic_cache" type="str">
+  Directory path for caching data.
+</ResponseField>
+
+<ResponseField name="modaic_token" type="Optional[str]">
+  API authentication token.
+</ResponseField>
+
+<ResponseField name="modaic_git_url" type="str">
+  Base URL for Git operations. Default: `https://git.modaic.dev`
+</ResponseField>
+
+<ResponseField name="modaic_api_url" type="str">
+  Base URL for API requests. Default: `https://api.modaic.dev`
+</ResponseField>
+
+<ResponseField name="editable_mode" type="bool">
+  Internal flag for development mode. Default: `False`
+</ResponseField>
+
+<ResponseField name="track" type="bool">
+  Whether usage tracking is enabled. Default: `False`
+</ResponseField>
+
+### Derived Properties
+
+#### modaic_hub_cache
+
+```python
+settings.modaic_hub_cache -> Path
+```
+
+Returns the path to the Modaic Hub cache directory.
+
+```python
+from modaic_client.config import settings
+
+hub_cache = settings.modaic_hub_cache
+print(f"Hub cache: {hub_cache}")
+# Example: /home/user/.cache/modaic/modaic_hub/modaic_hub
+```
+
+#### staging_dir
+
+```python
+settings.staging_dir -> Path
+```
+
+Returns the path to the staging directory for temporary files.
+
+```python
+staging = settings.staging_dir
+print(f"Staging dir: {staging}")
+# Example: /home/user/.cache/modaic/staging
+```
+
+#### sync_dir
+
+```python
+settings.sync_dir -> Path
+```
+
+Returns the path to the sync directory.
+
+```python
+sync = settings.sync_dir
+print(f"Sync dir: {sync}")
+# Example: /home/user/.cache/modaic/sync
+```
+
+#### batch_dir
+
+```python
+settings.batch_dir -> Path
+```
+
+Returns the path to the batch processing directory.
+
+```python
+batch = settings.batch_dir
+print(f"Batch dir: {batch}")
+# Example: /home/user/.cache/modaic/batch
+```
+
+#### use_github
+
+```python
+settings.use_github -> bool
+```
+
+Returns `True` if the configured Git URL points to GitHub.
+
+```python
+if settings.use_github:
+    print("Using GitHub for Git operations")
+else:
+    print("Using Modaic Git service")
+```
+
+### Methods
+
+#### ensure_modaic_cache
+
+```python
+settings.ensure_modaic_cache() -> Path
+```
+
+Creates the cache directory if it doesn't exist and returns its path.
+
+```python
+from modaic_client.config import settings
+
+cache_path = settings.ensure_modaic_cache()
+print(f"Cache directory ready: {cache_path}")
+```
+
+## Environment Variables
+
+Configuration can also be set using environment variables, which are loaded automatically from a `.env` file if present.
+
+```bash
+# .env file
+MODAIC_TOKEN=your_api_token_here
+MODAIC_API_URL=https://api.modaic.dev
+MODAIC_GIT_URL=https://git.modaic.dev
+MODAIC_CACHE=/custom/cache/path
+MODAIC_TRACK=true
+```
+
+```python
+# Environment variables are loaded automatically
+from modaic_client import get_modaic_client
+
+# Client uses settings from environment
+client = get_modaic_client()
+```
+
+<Note>
+  Environment variables are loaded when the module is imported. Calling `configure()` after import will override environment variable values.
+</Note>
+
+## Configuration Priority
+
+Configuration values are resolved in the following order (highest to lowest priority):
+
+1. Direct function arguments (e.g., `ModaicClient(modaic_token="...")` or `configure(modaic_token="...")`)
+2. Values set via `configure()` function
+3. Environment variables
+4. Default values
+
+```python
+import os
+from modaic_client import configure, get_modaic_client
+
+# 1. Environment variable (lowest priority for this example)
+os.environ["MODAIC_TOKEN"] = "token_from_env"
+
+# 2. Configure function (overrides environment)
+configure(modaic_token="token_from_configure")
+
+# 3. Direct client initialization (highest priority)
+client = get_modaic_client()
+# Uses "token_from_configure"
+
+# But you can override per-client
+from modaic_client import ModaicClient
+custom_client = ModaicClient(modaic_token="token_from_client")
+# Uses "token_from_client"
+```
+
+## Complete Configuration Example
+
+```python
+import os
+from pathlib import Path
+from modaic_client import configure, get_modaic_client, track
+from modaic_client.config import settings
+
+# Option 1: Configure via environment variables
+os.environ["MODAIC_TOKEN"] = "your_token"
+os.environ["MODAIC_TRACK"] = "true"
+
+# Option 2: Configure via function
+configure(
+    modaic_token="your_api_token_here",
+    modaic_cache=str(Path.home() / ".modaic_cache"),
+    modaic_api_url="https://api.modaic.dev",
+    track=True
+)
+
+# Option 3: Enable tracking separately
+track()
+
+# Verify configuration
+print("Configuration:")
+print(f"  API URL: {settings.modaic_api_url}")
+print(f"  Git URL: {settings.modaic_git_url}")
+print(f"  Cache: {settings.modaic_cache}")
+print(f"  Tracking: {settings.track}")
+print(f"  Using GitHub: {settings.use_github}")
+
+# Ensure cache directories exist
+cache_path = settings.ensure_modaic_cache()
+print(f"  Cache initialized: {cache_path}")
+
+# Use the configured client
+client = get_modaic_client()
+user_info = client.get_user_info()
+print(f"\nAuthenticated as: {user_info['login']}")
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+
+<Card title="Use Environment Variables" icon="file-code">
+  Store sensitive data like API tokens in environment variables or `.env` files rather than hardcoding them.
+</Card>
+
+<Card title="Configure Early" icon="bolt">
+  Call `configure()` at the start of your application before creating any clients or arbiters.
+</Card>
+
+<Card title="Custom Cache Location" icon="folder">
+  Set a custom cache directory for applications with specific storage requirements or permissions.
+</Card>
+
+<Card title="Enable Tracking" icon="chart-line">
+  Consider enabling tracking to help improve the Modaic service with anonymous usage data.
+</Card>
+
+</CardGroup>
+
+## Security Considerations
+
+<Warning>
+  Never commit API tokens to version control. Always use environment variables or secure secret management systems.
+</Warning>
+
+```python
+# Good: Load from environment
+import os
+from modaic_client import configure
+
+configure(modaic_token=os.getenv("MODAIC_TOKEN"))
+```
+
+```python
+# Bad: Hardcoded token
+from modaic_client import configure
+
+configure(modaic_token="sk_live_123456789")  # DON'T DO THIS!
+```
+
+## Troubleshooting
+
+### Token Not Found
+
+If you get authentication errors, verify your token is configured:
+
+```python
+from modaic_client.config import settings
+
+if not settings.modaic_token:
+    print("Error: No API token configured")
+    print("Set MODAIC_TOKEN environment variable or call configure()")
+else:
+    print(f"Token configured (length: {len(settings.modaic_token)})")
+```
+
+### Cache Permission Issues
+
+If you encounter permission errors with the default cache location:
+
+```python
+import tempfile
+from modaic_client import configure
+
+# Use a temporary directory
+configure(modaic_cache=tempfile.gettempdir())
+```
+
+### Custom API Endpoint
+
+For self-hosted or development environments:
+
+```python
+from modaic_client import configure
+
+configure(
+    modaic_api_url="http://localhost:8000",
+    modaic_git_url="http://localhost:3000"
+)
+```

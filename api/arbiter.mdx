@@ -1,0 +1,423 @@
+---
+title: "Arbiter"
+description: "Interface for working with Modaic arbiters"
+---
+
+## Overview
+
+The `Arbiter` class provides a convenient interface for interacting with a specific arbiter in a repository. It encapsulates the repository path and revision, and provides methods for making predictions, managing examples, and annotations.
+
+Arbiters are typically obtained using `ModaicClient.get_arbiter()` or `ModaicClient.create_arbiter()` rather than instantiated directly.
+
+## Constructor
+
+```python
+Arbiter(repo: str, revision: str = "main")
+```
+
+Creates a new Arbiter instance.
+
+<ParamField path="repo" type="str" required>
+  Repository path in the format `user/repo`.
+</ParamField>
+
+<ParamField path="revision" type="str" default="main">
+  Git revision (branch, tag, or commit hash) to use.
+</ParamField>
+
+<Note>
+  You typically don't need to instantiate `Arbiter` directly. Use `client.get_arbiter()` or `client.create_arbiter()` instead, which automatically configure the client connection.
+</Note>
+
+## Properties
+
+### repo
+
+The repository path in `user/repo` format.
+
+```python
+arbiter = client.get_arbiter("username/sentiment-classifier")
+print(arbiter.repo)  # "username/sentiment-classifier"
+```
+
+### revision
+
+The git revision being used (branch, tag, or commit hash).
+
+```python
+arbiter = client.get_arbiter("username/sentiment-classifier", revision="v1.0")
+print(arbiter.revision)  # "v1.0"
+```
+
+### client
+
+The `ModaicClient` instance used for API requests.
+
+```python
+arbiter = client.get_arbiter("username/sentiment-classifier")
+print(type(arbiter.client))  # <class 'ModaicClient'>
+```
+
+## Methods
+
+### predict
+
+```python
+predict(
+    input: dict,
+    ground_truth: Optional[str] = None,
+    ground_reasoning: str = ""
+) -> Tuple[str, ArbiterPrediction]
+```
+
+Makes a prediction using this arbiter.
+
+<ParamField path="input" type="dict" required>
+  Input data matching the arbiter's input schema.
+</ParamField>
+
+<ParamField path="ground_truth" type="str" optional>
+  Optional ground truth value for the prediction.
+</ParamField>
+
+<ParamField path="ground_reasoning" type="str" default="">
+  Optional reasoning for the ground truth.
+</ParamField>
+
+<ResponseField name="example_id" type="str">
+  Unique identifier for the created example.
+</ResponseField>
+
+<ResponseField name="prediction" type="ArbiterPrediction">
+  The prediction result containing:
+  - `arbiter_repo`: Repository path of the arbiter
+  - `commit_hash`: Git commit hash used for the prediction
+  - `output`: The predicted output value
+  - `reasoning`: Explanation for the prediction
+  - `messages`: List of message objects from the prediction process
+</ResponseField>
+
+```python
+from modaic_client import get_modaic_client
+
+client = get_modaic_client()
+arbiter = client.get_arbiter("username/sentiment-classifier")
+
+example_id, prediction = arbiter.predict(
+    input={"text": "This product is amazing!"},
+    ground_truth="positive",
+    ground_reasoning="Clear positive sentiment with enthusiasm"
+)
+
+print(f"Example ID: {example_id}")
+print(f"Predicted: {prediction.output}")
+print(f"Reasoning: {prediction.reasoning}")
+print(f"Commit: {prediction.commit_hash}")
+```
+
+### ingest_examples
+
+```python
+ingest_examples(examples: list[dict]) -> IngestExamplesResponse
+```
+
+Ingests multiple examples for this arbiter. Automatically sets the `arbiter_repo` field for each example.
+
+<ParamField path="examples" type="list[dict]" required>
+  List of example dictionaries. Each should include `input`, and optionally `ground_truth`, `ground_reasoning`, and other fields.
+</ParamField>
+
+<ResponseField name="response" type="IngestExamplesResponse">
+  Response containing:
+  - `queued`: Boolean indicating if examples were queued for processing
+  - `example_ids`: List of unique identifiers for the created examples
+</ResponseField>
+
+```python
+examples = [
+    {
+        "input": {"text": "Great product!"},
+        "ground_truth": "positive",
+        "ground_reasoning": "Positive language"
+    },
+    {
+        "input": {"text": "Terrible experience."},
+        "ground_truth": "negative",
+        "ground_reasoning": "Negative language"
+    },
+    {
+        "input": {"text": "It's okay, nothing special."},
+        "ground_truth": "neutral",
+        "ground_reasoning": "Neutral, lukewarm sentiment"
+    }
+]
+
+response = arbiter.ingest_examples(examples)
+print(f"Queued: {response.queued}")
+print(f"Created {len(response.example_ids)} examples")
+for example_id in response.example_ids:
+    print(f"  - {example_id}")
+```
+
+### list_examples
+
+```python
+list_examples(
+    limit: int = 50,
+    cursor: Optional[str] = None,
+    version: Optional[int] = None,
+    commit_hash: Optional[str] = None,
+    search: Optional[str] = None
+) -> ExamplesPage
+```
+
+Lists examples for this arbiter with pagination and filtering options.
+
+<ParamField path="limit" type="int" default="50">
+  Maximum number of examples to return per page.
+</ParamField>
+
+<ParamField path="cursor" type="str" optional>
+  Pagination cursor for retrieving the next page of results.
+</ParamField>
+
+<ParamField path="version" type="int" optional>
+  Filter examples by a specific arbiter version.
+</ParamField>
+
+<ParamField path="commit_hash" type="str" optional>
+  Filter examples by a specific commit hash.
+</ParamField>
+
+<ParamField path="search" type="str" optional>
+  Search query to filter examples by content.
+</ParamField>
+
+<ResponseField name="page" type="ExamplesPage">
+  Paginated response containing:
+  - `items`: List of `PredictedExample` objects
+  - `limit`: The limit used for this page
+  - `next_cursor`: Cursor for the next page (None if no more pages)
+</ResponseField>
+
+```python
+# Get first page of examples
+page = arbiter.list_examples(limit=20)
+
+print(f"Found {len(page.items)} examples")
+for example in page.items:
+    print(f"ID: {example.id}")
+    print(f"Input: {example.input}")
+    print(f"Output: {example.output}")
+    print(f"Ground Truth: {example.ground_truth}")
+    print("---")
+
+# Get next page if available
+if page.next_cursor:
+    next_page = arbiter.list_examples(cursor=page.next_cursor)
+    print(f"Next page has {len(next_page.items)} examples")
+
+# Search examples
+search_results = arbiter.list_examples(search="amazing")
+print(f"Found {len(search_results.items)} examples matching 'amazing'")
+```
+
+### get_example
+
+```python
+get_example(example_id: str) -> PredictedExample
+```
+
+Retrieves a specific example by its ID.
+
+<ParamField path="example_id" type="str" required>
+  Unique identifier of the example to retrieve.
+</ParamField>
+
+<ResponseField name="example" type="PredictedExample">
+  The requested example with all its data and metadata, including:
+  - `id`: Example identifier
+  - `arbiter_repo`: Repository path
+  - `arbiter_hash`: Commit hash used
+  - `input`: Input data
+  - `output`: Predicted output
+  - `reasoning`: Prediction reasoning
+  - `ground_truth`: Annotated ground truth (if available)
+  - `ground_reasoning`: Ground truth reasoning (if available)
+  - `messages`: Message history
+  - `prediction_timestamp`: When the prediction was made
+  - `confidence`: Prediction confidence score (if available)
+</ResponseField>
+
+```python
+example = arbiter.get_example("example_123")
+
+print(f"Input: {example.input}")
+print(f"Predicted: {example.output}")
+print(f"Ground Truth: {example.ground_truth}")
+print(f"Reasoning: {example.reasoning}")
+print(f"Timestamp: {example.prediction_timestamp}")
+
+if example.confidence:
+    print(f"Confidence: {example.confidence:.2%}")
+```
+
+### annotate_example
+
+```python
+annotate_example(
+    example_id: str,
+    ground_truth: Optional[str] = None,
+    ground_reasoning: Optional[str] = None
+) -> AnnotateExampleResponse
+```
+
+Adds or updates annotation on an example. This is useful for providing feedback and creating training data.
+
+<ParamField path="example_id" type="str" required>
+  ID of the example to annotate.
+</ParamField>
+
+<ParamField path="ground_truth" type="str" optional>
+  The correct output value for this example.
+</ParamField>
+
+<ParamField path="ground_reasoning" type="str" optional>
+  Explanation for why this is the correct output.
+</ParamField>
+
+<ResponseField name="response" type="AnnotateExampleResponse">
+  Response containing:
+  - `status`: Status message confirming the annotation
+</ResponseField>
+
+<Note>
+  At least one of `ground_truth` or `ground_reasoning` must be provided.
+</Note>
+
+```python
+# Make a prediction
+example_id, prediction = arbiter.predict(
+    input={"text": "This is fantastic!"}
+)
+
+print(f"Predicted: {prediction.output}")
+
+# Annotate with correct answer
+response = arbiter.annotate_example(
+    example_id=example_id,
+    ground_truth="positive",
+    ground_reasoning="Strong positive sentiment with enthusiastic language"
+)
+
+print(f"Annotation status: {response.status}")
+```
+
+### set_client
+
+```python
+set_client(client: ModaicClient) -> None
+```
+
+Sets the ModaicClient instance to use for API requests.
+
+<ParamField path="client" type="ModaicClient" required>
+  The client instance to use.
+</ParamField>
+
+<Note>
+  This method is typically called internally by `ModaicClient.get_arbiter()` and `ModaicClient.create_arbiter()`. You rarely need to call it directly.
+</Note>
+
+### to_dict
+
+```python
+to_dict() -> dict
+```
+
+Converts the arbiter to a dictionary representation suitable for API requests.
+
+<ResponseField name="dict" type="dict">
+  Dictionary containing:
+  - `arbiter_repo`: The repository path
+  - `arbiter_revision`: The git revision
+</ResponseField>
+
+```python
+arbiter = client.get_arbiter("username/sentiment-classifier", revision="v1.0")
+arbiter_dict = arbiter.to_dict()
+print(arbiter_dict)
+# {"arbiter_repo": "username/sentiment-classifier", "arbiter_revision": "v1.0"}
+```
+
+## Complete Example
+
+```python
+from modaic_client import get_modaic_client
+
+# Get client and arbiter
+client = get_modaic_client()
+arbiter = client.get_arbiter("username/sentiment-classifier")
+
+# Make predictions
+test_inputs = [
+    {"text": "This product is amazing!"},
+    {"text": "Worst purchase ever."},
+    {"text": "It's okay, nothing special."}
+]
+
+for test_input in test_inputs:
+    example_id, prediction = arbiter.predict(input=test_input)
+    
+    print(f"Input: {test_input['text']}")
+    print(f"Prediction: {prediction.output}")
+    print(f"Reasoning: {prediction.reasoning}")
+    print(f"Example ID: {example_id}")
+    print("---")
+
+# Ingest training examples
+training_examples = [
+    {
+        "input": {"text": "Absolutely love it!"},
+        "ground_truth": "positive"
+    },
+    {
+        "input": {"text": "Complete waste of money."},
+        "ground_truth": "negative"
+    }
+]
+
+response = arbiter.ingest_examples(training_examples)
+print(f"Ingested {len(response.example_ids)} examples")
+
+# List and review examples
+page = arbiter.list_examples(limit=10)
+print(f"\nTotal examples: {len(page.items)}")
+
+for example in page.items:
+    if example.ground_truth != example.output:
+        print(f"Mismatch found:")
+        print(f"  Input: {example.input}")
+        print(f"  Predicted: {example.output}")
+        print(f"  Ground Truth: {example.ground_truth}")
+```
+
+## Working with Multiple Revisions
+
+```python
+# Use different versions of the same arbiter
+main_arbiter = client.get_arbiter("username/classifier", revision="main")
+dev_arbiter = client.get_arbiter("username/classifier", revision="dev")
+v1_arbiter = client.get_arbiter("username/classifier", revision="v1.0.0")
+
+test_input = {"text": "Test input"}
+
+# Compare predictions across versions
+_, main_pred = main_arbiter.predict(input=test_input)
+_, dev_pred = dev_arbiter.predict(input=test_input)
+_, v1_pred = v1_arbiter.predict(input=test_input)
+
+print(f"Main: {main_pred.output}")
+print(f"Dev: {dev_pred.output}")
+print(f"v1.0: {v1_pred.output}")
+```

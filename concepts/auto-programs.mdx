@@ -1,0 +1,359 @@
+---
+title: Auto programs
+description: Dynamically load and manage DSPy programs with AutoProgram and AutoConfig
+---
+
+Auto classes provide dynamic loading capabilities for precompiled programs. They allow you to load programs without knowing their implementation details at import time, making it easy to share and reuse programs from Modaic Hub.
+
+## AutoProgram
+
+`AutoProgram` dynamically loads precompiled programs from Modaic Hub or local paths. It automatically resolves the correct program class and instantiates it with the saved state.
+
+### Loading from Modaic Hub
+
+Load a program from a hub repository:
+
+```python
+from modaic import AutoProgram
+
+program = AutoProgram.from_precompiled(
+    "username/my-program",
+    access_token="your-token",
+    config={"temperature": 0.8},  # Override config values
+    rev="main",  # Branch, tag, or commit SHA
+    api_key="your-api-key",  # LM API key
+    hf_token="your-hf-token"  # Hugging Face token if needed
+)
+```
+
+### Loading from local path
+
+Load a program from a local directory:
+
+```python
+program = AutoProgram.from_precompiled(
+    "./my_program",
+    config={"temperature": 0.5}
+)
+```
+
+<Note>
+Local paths must start with `./`, `/`, or `../`. Hub paths use the format `username/repo`.
+</Note>
+
+### Method signature
+
+```python
+@staticmethod
+def from_precompiled(
+    repo_path: str,
+    *,
+    access_token: Optional[str] = None,
+    config: Optional[dict] = None,
+    rev: str = "main",
+    **kw,
+) -> PrecompiledProgram:
+    """
+    Load a compiled program from the given identifier.
+    
+    Args:
+        repo_path: Hub path ("user/repo") or local directory.
+        access_token: Modaic access token for private repos.
+        config: Dictionary to override configuration values.
+        rev: Branch, tag, or commit SHA to load.
+        **kw: Additional keyword arguments for the Program constructor.
+        
+    Returns:
+        An instantiated Program subclass.
+    """
+```
+
+## AutoConfig
+
+`AutoConfig` dynamically loads configuration objects from precompiled repositories:
+
+```python
+from modaic import AutoConfig
+
+config = AutoConfig.from_precompiled(
+    "username/my-program",
+    rev="v1.0.0",
+    temperature=0.7  # Override specific values
+)
+```
+
+### Method signature
+
+```python
+@staticmethod
+def from_precompiled(
+    repo_path: str, 
+    rev: str = "main", 
+    **kwargs
+) -> PrecompiledConfig:
+    """
+    Load a config for a program or retriever from a precompiled repo.
+    
+    Args:
+        repo_path: Hub path or local directory.
+        rev: Branch, tag, or commit SHA.
+        **kwargs: Additional config values to override.
+        
+    Returns:
+        A config object constructed via the resolved config class.
+    """
+```
+
+## AutoRetriever
+
+`AutoRetriever` dynamically loads retriever components:
+
+```python
+from modaic import AutoRetriever
+
+retriever = AutoRetriever.from_precompiled(
+    "username/my-retriever",
+    config={"top_k": 10},
+    rev="main"
+)
+
+results = retriever.retrieve("search query")
+```
+
+### Method signature
+
+```python
+@staticmethod
+def from_precompiled(
+    repo_path: str,
+    *,
+    config: Optional[dict] = None,
+    rev: str = "main",
+    **kw,
+) -> Retriever:
+    """
+    Load a compiled retriever from the given identifier.
+    
+    Args:
+        repo_path: Hub path ("user/repo") or local directory.
+        config: Dictionary to override configuration values.
+        rev: Branch, tag, or commit SHA.
+        **kw: Additional keyword arguments for the Retriever constructor.
+        
+    Returns:
+        An instantiated Retriever subclass.
+    """
+```
+
+## How auto loading works
+
+<Steps>
+
+<Step title="Resolve repository location">
+When you call `AutoProgram.from_precompiled()`, Modaic first determines if the path is local or points to a hub repository.
+
+For hub repositories, it clones or fetches the repository to the local cache at `~/.modaic/modaic_hub/username/repo/`.
+</Step>
+
+<Step title="Load auto_classes.json">
+The repository must contain an `auto_classes.json` file that maps auto class names to their Python module paths:
+
+```json
+{
+  "AutoConfig": "program.config.TableRAGConfig",
+  "AutoProgram": "program.program.TableRAGProgram",
+  "AutoRetriever": "program.indexer.TableRAGIndexer"
+}
+```
+
+This file is automatically created when you push a program with `with_code=True`.
+</Step>
+
+<Step title="Dynamically import the class">
+Modaic uses the module path to dynamically import the class:
+
+```python
+# For hub repos: modaic_hub.username.repo.main.program.program.TableRAGProgram
+# For local repos: program.program.TableRAGProgram
+module = importlib.import_module(module_name)
+ProgramClass = getattr(module, class_name)
+```
+</Step>
+
+<Step title="Load saved state">
+The class is instantiated and its state is loaded from `program.json` and `config.json`:
+
+```python
+program = ProgramClass.from_precompiled(
+    repo_dir, 
+    config=config,
+    **kwargs
+)
+```
+</Step>
+
+</Steps>
+
+<Warning>
+For `AutoProgram` and `AutoRetriever` to work, you must push your program with `with_code=True` to include the source code and `auto_classes.json` mapping.
+</Warning>
+
+## Version control with rev parameter
+
+The `rev` parameter allows you to load specific versions of your program:
+
+<Tabs>
+  <Tab title="Branch">
+    Load from a specific branch:
+    
+    ```python
+    program = AutoProgram.from_precompiled(
+        "username/my-program",
+        rev="development"
+    )
+    ```
+  </Tab>
+  
+  <Tab title="Tag">
+    Load from a tagged version:
+    
+    ```python
+    program = AutoProgram.from_precompiled(
+        "username/my-program",
+        rev="v1.0.0"
+    )
+    ```
+  </Tab>
+  
+  <Tab title="Commit SHA">
+    Load from a specific commit:
+    
+    ```python
+    program = AutoProgram.from_precompiled(
+        "username/my-program",
+        rev="a3f5b2c1d4e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0"
+    )
+    ```
+  </Tab>
+</Tabs>
+
+## Configuration overrides
+
+You can override configuration values when loading:
+
+```python
+# The saved config has temperature=0.7
+program = AutoProgram.from_precompiled(
+    "username/my-program",
+    config={
+        "temperature": 0.9,  # Override
+        "max_tokens": 2000   # Override
+    }
+)
+
+# Other config values remain unchanged
+print(program.config.temperature)  # 0.9
+```
+
+## Private attributes
+
+When loaded via auto classes, programs have additional metadata:
+
+```python
+program = AutoProgram.from_precompiled("username/my-program")
+
+# Source directory (in cache)
+print(program._source)  # Path to cached repo
+
+# Commit information
+print(program._source_commit)  # Commit(repo="username/my-program", sha="...")
+
+# Whether loaded via auto
+print(program._from_auto)  # True
+```
+
+This metadata is used when pushing updates back to the hub to maintain version history.
+
+## Complete example
+
+Here's a full workflow using auto classes:
+
+```python
+from modaic import AutoProgram
+import dspy
+
+# Configure language model
+dspy.configure(lm=dspy.LM("openai/gpt-4o-mini", api_key="your-key"))
+
+# Load program from hub
+program = AutoProgram.from_precompiled(
+    "modaic/qa-system",
+    rev="v1.2.0",
+    config={"temperature": 0.8}
+)
+
+# Use the program
+result = program(question="What is Modaic?")
+print(result.answer)
+
+# Make improvements and push back
+program.push_to_hub(
+    "username/my-qa-system",
+    commit_message="Improved version based on modaic/qa-system",
+    branch="main",
+    tag="v1.0.0"
+)
+```
+
+<Info>
+When you push a program loaded via `AutoProgram`, it automatically includes the source code (`with_code=True` by default).
+</Info>
+
+## Error handling
+
+<Tabs>
+  <Tab title="Missing auto_classes.json">
+    If the repository doesn't have `auto_classes.json`:
+    
+    ```python
+    # Raises FileNotFoundError
+    # "Failed to load AutoProgram, auto_classes.json not found...
+    # make sure you push_to_hub() with with_code=True"
+    ```
+    
+    Solution: Push the program with `with_code=True`.
+  </Tab>
+  
+  <Tab title="Repository not found">
+    If the repository doesn't exist:
+    
+    ```python
+    # Raises RepositoryNotFoundError
+    # "Repository 'username/repo' does not exist"
+    ```
+    
+    Solution: Check the repository path and access token.
+  </Tab>
+  
+  <Tab title="Invalid revision">
+    If the revision doesn't exist:
+    
+    ```python
+    # Raises RevisionNotFoundError
+    # "Revision 'v2.0.0' is not a valid branch, tag, or commit SHA"
+    ```
+    
+    Solution: Use a valid branch, tag, or commit SHA.
+  </Tab>
+</Tabs>
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Precompiled programs" icon="box" href="/concepts/precompiled-programs">
+    Learn the fundamentals of PrecompiledProgram
+  </Card>
+  <Card title="Hub operations" icon="cloud-arrow-up" href="/concepts/hub-operations">
+    Master version control and collaboration
+  </Card>
+</CardGroup>

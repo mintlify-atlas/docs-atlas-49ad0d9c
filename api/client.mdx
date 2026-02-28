@@ -1,0 +1,616 @@
+---
+title: "ModaicClient"
+description: "Core client for interacting with the Modaic API"
+---
+
+## Overview
+
+The `ModaicClient` class provides the main interface for interacting with the Modaic API. It handles authentication, HTTP requests, and provides methods for managing arbiters, examples, and predictions.
+
+For most use cases, you should use the `get_modaic_client()` function to get a singleton instance rather than creating a new client directly.
+
+## ModaicClient
+
+### Constructor
+
+```python
+ModaicClient(
+    modaic_token: Optional[str] = None,
+    base_url: Optional[str] = None,
+    *,
+    client: Optional[httpx.Client] = None,
+    timeout: float = 30.0
+)
+```
+
+Creates a new Modaic client instance.
+
+<ParamField path="modaic_token" type="str" optional>
+  API token for authentication. If not provided, uses the token from `settings.modaic_token`.
+</ParamField>
+
+<ParamField path="base_url" type="str" optional>
+  Base URL for the Modaic API. If not provided, uses `settings.modaic_api_url`.
+</ParamField>
+
+<ParamField path="client" type="httpx.Client" optional>
+  Optional pre-configured HTTP client. Useful for testing or custom configurations.
+</ParamField>
+
+<ParamField path="timeout" type="float" default="30.0">
+  Request timeout in seconds.
+</ParamField>
+
+### Methods
+
+#### get_arbiter
+
+```python
+get_arbiter(repo: str, revision: str = "main") -> Arbiter
+```
+
+Retrieves an existing arbiter from a repository.
+
+<ParamField path="repo" type="str" required>
+  Repository path in the format `user/repo`.
+</ParamField>
+
+<ParamField path="revision" type="str" default="main">
+  Git revision (branch, tag, or commit hash) to use.
+</ParamField>
+
+<ResponseField name="arbiter" type="Arbiter">
+  An Arbiter instance connected to the specified repository.
+</ResponseField>
+
+```python
+from modaic_client import get_modaic_client
+
+client = get_modaic_client()
+arbiter = client.get_arbiter("username/sentiment-classifier")
+```
+
+#### create_arbiter
+
+```python
+create_arbiter(
+    repo: str,
+    inputs: list[FieldSchema],
+    output: FieldSchema,
+    instructions: Optional[str] = None
+) -> Arbiter
+```
+
+Creates a new arbiter in the specified repository.
+
+<ParamField path="repo" type="str" required>
+  Repository path where the arbiter will be created.
+</ParamField>
+
+<ParamField path="inputs" type="list[FieldSchema]" required>
+  List of input field schemas defining the arbiter's expected inputs.
+</ParamField>
+
+<ParamField path="output" type="FieldSchema" required>
+  Schema for the arbiter's output field.
+</ParamField>
+
+<ParamField path="instructions" type="str" optional>
+  Optional instructions for the arbiter's behavior.
+</ParamField>
+
+<ResponseField name="arbiter" type="Arbiter">
+  The newly created Arbiter instance.
+</ResponseField>
+
+```python
+from modaic_client import get_modaic_client
+from modaic_client.schemas import FieldSchema
+
+client = get_modaic_client()
+
+inputs = [
+    FieldSchema(
+        name="text",
+        type="string",
+        description="Text to classify"
+    )
+]
+output = FieldSchema(
+    name="sentiment",
+    type="string",
+    allowed_values=["positive", "negative", "neutral"],
+    description="Sentiment classification"
+)
+
+arbiter = client.create_arbiter(
+    repo="username/sentiment-classifier",
+    inputs=inputs,
+    output=output,
+    instructions="Classify the sentiment of the given text."
+)
+```
+
+#### predict
+
+```python
+predict(
+    input: dict,
+    arbiter: Arbiter,
+    ground_truth: Optional[str] = None,
+    ground_reasoning: str = ""
+) -> Tuple[str, ArbiterPrediction]
+```
+
+Makes a prediction using a single arbiter.
+
+<ParamField path="input" type="dict" required>
+  Input data matching the arbiter's input schema.
+</ParamField>
+
+<ParamField path="arbiter" type="Arbiter" required>
+  The arbiter to use for prediction.
+</ParamField>
+
+<ParamField path="ground_truth" type="str" optional>
+  Optional ground truth value for the prediction.
+</ParamField>
+
+<ParamField path="ground_reasoning" type="str" default="">
+  Optional reasoning for the ground truth.
+</ParamField>
+
+<ResponseField name="example_id" type="str">
+  Unique identifier for the created example.
+</ResponseField>
+
+<ResponseField name="prediction" type="ArbiterPrediction">
+  The prediction result including output, reasoning, and metadata.
+</ResponseField>
+
+```python
+arbiter = client.get_arbiter("username/sentiment-classifier")
+
+example_id, prediction = client.predict(
+    input={"text": "This product is amazing!"},
+    arbiter=arbiter
+)
+
+print(f"Example ID: {example_id}")
+print(f"Prediction: {prediction.output}")
+print(f"Reasoning: {prediction.reasoning}")
+```
+
+#### predict_all
+
+```python
+predict_all(
+    input: dict,
+    arbiters: list[Arbiter],
+    ground_data: Optional[list[GroundData]] = None
+) -> ArbiterPredictResponse
+```
+
+Makes predictions using multiple arbiters simultaneously.
+
+<ParamField path="input" type="dict" required>
+  Input data to be processed by all arbiters.
+</ParamField>
+
+<ParamField path="arbiters" type="list[Arbiter]" required>
+  List of arbiters to use for predictions.
+</ParamField>
+
+<ParamField path="ground_data" type="list[GroundData]" optional>
+  Optional list of ground truth data corresponding to each arbiter.
+</ParamField>
+
+<ResponseField name="response" type="ArbiterPredictResponse">
+  Response containing the example ID and a list of predictions from each arbiter.
+</ResponseField>
+
+```python
+arbiter1 = client.get_arbiter("username/sentiment-classifier")
+arbiter2 = client.get_arbiter("username/emotion-detector")
+
+response = client.predict_all(
+    input={"text": "This product is amazing!"},
+    arbiters=[arbiter1, arbiter2]
+)
+
+print(f"Example ID: {response.example_id}")
+for prediction in response.predictions:
+    print(f"Arbiter: {prediction.arbiter_repo}")
+    print(f"Output: {prediction.output}")
+```
+
+#### ingest_examples
+
+```python
+ingest_examples(examples: list[dict]) -> IngestExamplesResponse
+```
+
+Ingests multiple examples for training or evaluation.
+
+<ParamField path="examples" type="list[dict]" required>
+  List of example dictionaries. Each should include `arbiter_repo`, `input`, and optionally `ground_truth` and other fields.
+</ParamField>
+
+<ResponseField name="response" type="IngestExamplesResponse">
+  Response containing queue status and list of created example IDs.
+</ResponseField>
+
+```python
+examples = [
+    {
+        "arbiter_repo": "username/sentiment-classifier",
+        "input": {"text": "Great product!"},
+        "ground_truth": "positive"
+    },
+    {
+        "arbiter_repo": "username/sentiment-classifier",
+        "input": {"text": "Terrible experience."},
+        "ground_truth": "negative"
+    }
+]
+
+response = client.ingest_examples(examples)
+print(f"Queued: {response.queued}")
+print(f"Example IDs: {response.example_ids}")
+```
+
+#### list_examples
+
+```python
+list_examples(
+    user: str,
+    program: str,
+    limit: int = 50,
+    cursor: Optional[str] = None,
+    version: Optional[int] = None,
+    commit_hash: Optional[str] = None,
+    search: Optional[str] = None
+) -> ExamplesPage
+```
+
+Lists examples for a specific arbiter repository with pagination.
+
+<ParamField path="user" type="str" required>
+  Username of the repository owner.
+</ParamField>
+
+<ParamField path="program" type="str" required>
+  Repository name.
+</ParamField>
+
+<ParamField path="limit" type="int" default="50">
+  Maximum number of examples to return.
+</ParamField>
+
+<ParamField path="cursor" type="str" optional>
+  Pagination cursor for retrieving the next page.
+</ParamField>
+
+<ParamField path="version" type="int" optional>
+  Filter by specific arbiter version.
+</ParamField>
+
+<ParamField path="commit_hash" type="str" optional>
+  Filter by specific commit hash.
+</ParamField>
+
+<ParamField path="search" type="str" optional>
+  Search query to filter examples.
+</ParamField>
+
+<ResponseField name="page" type="ExamplesPage">
+  Paginated response containing a list of examples and pagination metadata.
+</ResponseField>
+
+```python
+page = client.list_examples(
+    user="username",
+    program="sentiment-classifier",
+    limit=20,
+    search="amazing"
+)
+
+for example in page.items:
+    print(f"ID: {example.id}")
+    print(f"Input: {example.input}")
+    print(f"Output: {example.output}")
+
+if page.next_cursor:
+    next_page = client.list_examples(
+        user="username",
+        program="sentiment-classifier",
+        cursor=page.next_cursor
+    )
+```
+
+#### get_example
+
+```python
+get_example(example_id: str) -> PredictedExample
+```
+
+Retrieves a single example by its ID.
+
+<ParamField path="example_id" type="str" required>
+  Unique identifier of the example.
+</ParamField>
+
+<ResponseField name="example" type="PredictedExample">
+  The requested example with all its data and metadata.
+</ResponseField>
+
+```python
+example = client.get_example("example_123")
+print(f"Input: {example.input}")
+print(f"Output: {example.output}")
+print(f"Ground Truth: {example.ground_truth}")
+```
+
+#### annotate_example
+
+```python
+annotate_example(
+    example_id: str,
+    annotations: list[PredictionAnnotation]
+) -> AnnotateExampleResponse
+```
+
+Adds or updates annotations on an example.
+
+<ParamField path="example_id" type="str" required>
+  ID of the example to annotate.
+</ParamField>
+
+<ParamField path="annotations" type="list[PredictionAnnotation]" required>
+  List of annotations to add. Each annotation can include `arbiter_repo`, `ground_truth`, and `ground_reasoning`.
+</ParamField>
+
+<ResponseField name="response" type="AnnotateExampleResponse">
+  Status response confirming the annotation.
+</ResponseField>
+
+```python
+annotation = {
+    "arbiter_repo": "username/sentiment-classifier",
+    "ground_truth": "positive",
+    "ground_reasoning": "Clear positive sentiment"
+}
+
+response = client.annotate_example("example_123", [annotation])
+print(f"Status: {response.status}")
+```
+
+#### create_repo
+
+```python
+create_repo(
+    repo_path: str,
+    exist_ok: bool = False,
+    private: bool = False,
+    access_token: Optional[str] = None
+) -> bool
+```
+
+Creates a new repository on Modaic Hub.
+
+<ParamField path="repo_path" type="str" required>
+  Repository path in the format `user/repo`.
+</ParamField>
+
+<ParamField path="exist_ok" type="bool" default="False">
+  If True, doesn't raise an error if the repository already exists.
+</ParamField>
+
+<ParamField path="private" type="bool" default="False">
+  Whether the repository should be private.
+</ParamField>
+
+<ParamField path="access_token" type="str" optional>
+  Optional access token to use instead of the configured token.
+</ParamField>
+
+<ResponseField name="created" type="bool">
+  Returns True if a new repository was created, False if it already existed (when `exist_ok=True`).
+</ResponseField>
+
+```python
+created = client.create_repo(
+    repo_path="username/my-arbiter",
+    private=True
+)
+
+if created:
+    print("Repository created successfully")
+```
+
+#### delete_repo
+
+```python
+delete_repo(
+    repo_path: str,
+    access_token: Optional[str] = None
+) -> bool
+```
+
+Deletes a repository from Modaic Hub.
+
+<ParamField path="repo_path" type="str" required>
+  Repository path in the format `user/repo`.
+</ParamField>
+
+<ParamField path="access_token" type="str" optional>
+  Optional access token to use instead of the configured token.
+</ParamField>
+
+<ResponseField name="deleted" type="bool">
+  Returns True if the repository was deleted successfully.
+</ResponseField>
+
+<Warning>
+  This operation is irreversible. All data in the repository will be permanently deleted.
+</Warning>
+
+```python
+deleted = client.delete_repo("username/my-arbiter")
+
+if deleted:
+    print("Repository deleted successfully")
+```
+
+#### get_user_info
+
+```python
+get_user_info(access_token: Optional[str] = None) -> dict[str, Any]
+```
+
+Retrieves user information for the configured access token.
+
+<ParamField path="access_token" type="str" optional>
+  Optional access token to use instead of the configured token.
+</ParamField>
+
+<ResponseField name="login" type="str">
+  User's login username.
+</ResponseField>
+
+<ResponseField name="email" type="str">
+  User's email address.
+</ResponseField>
+
+<ResponseField name="avatar_url" type="str">
+  URL to the user's avatar image.
+</ResponseField>
+
+<ResponseField name="name" type="str">
+  User's full name.
+</ResponseField>
+
+```python
+user_info = client.get_user_info()
+print(f"Username: {user_info['login']}")
+print(f"Email: {user_info['email']}")
+print(f"Name: {user_info['name']}")
+```
+
+## get_modaic_client
+
+```python
+get_modaic_client() -> ModaicClient
+```
+
+Returns a singleton instance of `ModaicClient`. This is the recommended way to get a client instance as it ensures only one client is created and reused throughout your application.
+
+<ResponseField name="client" type="ModaicClient">
+  A singleton ModaicClient instance.
+</ResponseField>
+
+```python
+from modaic_client import get_modaic_client
+
+client = get_modaic_client()
+arbiter = client.get_arbiter("username/my-arbiter")
+```
+
+<Note>
+  The singleton client is created with default settings from the `settings` object. To customize the client configuration, use `configure()` before calling `get_modaic_client()`, or call `configure_modaic_client()` directly.
+</Note>
+
+## configure_modaic_client
+
+```python
+configure_modaic_client(
+    modaic_token: Optional[str] = None,
+    base_url: Optional[str] = None,
+    *,
+    client: Optional[httpx.Client] = None,
+    timeout: float = 30.0
+) -> ModaicClient
+```
+
+Configures and returns the singleton `ModaicClient` instance with custom settings.
+
+<ParamField path="modaic_token" type="str" optional>
+  API token for authentication.
+</ParamField>
+
+<ParamField path="base_url" type="str" optional>
+  Custom base URL for the Modaic API.
+</ParamField>
+
+<ParamField path="client" type="httpx.Client" optional>
+  Custom HTTP client instance.
+</ParamField>
+
+<ParamField path="timeout" type="float" default="30.0">
+  Request timeout in seconds.
+</ParamField>
+
+<ResponseField name="client" type="ModaicClient">
+  The configured singleton ModaicClient instance.
+</ResponseField>
+
+```python
+from modaic_client import configure_modaic_client
+
+client = configure_modaic_client(
+    modaic_token="your_token_here",
+    timeout=60.0
+)
+```
+
+## Complete Example
+
+```python
+from modaic_client import get_modaic_client
+from modaic_client.schemas import FieldSchema
+
+# Get the client
+client = get_modaic_client()
+
+# Create an arbiter
+inputs = [
+    FieldSchema(
+        name="review",
+        type="string",
+        description="Product review text"
+    )
+]
+output = FieldSchema(
+    name="sentiment",
+    type="string",
+    allowed_values=["positive", "negative", "neutral"]
+)
+
+arbiter = client.create_arbiter(
+    repo="username/review-classifier",
+    inputs=inputs,
+    output=output,
+    instructions="Classify product reviews by sentiment."
+)
+
+# Make a prediction
+example_id, prediction = arbiter.predict(
+    input={"review": "This product exceeded my expectations!"}
+)
+
+print(f"Prediction: {prediction.output}")
+print(f"Reasoning: {prediction.reasoning}")
+
+# Annotate with ground truth
+arbiter.annotate_example(
+    example_id=example_id,
+    ground_truth="positive",
+    ground_reasoning="Clearly positive language"
+)
+
+# List examples
+page = arbiter.list_examples(limit=10)
+for example in page.items:
+    print(f"Input: {example.input}")
+    print(f"Output: {example.output}")
+```

@@ -1,0 +1,434 @@
+---
+title: Batch Processing
+description: Use batch operations for cost-effective and efficient inference at scale
+---
+
+## Overview
+
+Batch processing allows you to submit multiple predictions in a single job, reducing costs and improving throughput. Modaic's batch API supports major LLM providers with automatic adapter detection.
+
+## Supported Providers
+
+- OpenAI
+- Anthropic
+- Together AI
+- Fireworks AI
+- Azure OpenAI
+
+<Note>
+Check if your model supports batching:
+```python
+from modaic.batch import supports_abatch
+
+if supports_abatch("openai/gpt-4o-mini"):
+    print("Batch processing supported!")
+```
+</Note>
+
+## Basic Batch Processing
+
+<Steps>
+  <Step title="Configure DSPy">
+    Set up your language model:
+
+    ```python
+    import dspy
+    from modaic.batch import abatch
+
+    dspy.configure(
+        lm=dspy.LM("openai/gpt-4o-mini"),
+        adapter=dspy.ChatAdapter()
+    )
+    ```
+  </Step>
+
+  <Step title="Create Your Predictor">
+    Define a standard DSPy predictor:
+
+    ```python
+    predictor = dspy.Predict("question -> answer")
+    ```
+  </Step>
+
+  <Step title="Prepare Input Batch">
+    Create a list of input dictionaries:
+
+    ```python
+    inputs = [
+        {"question": "What is the capital of France?"},
+        {"question": "What is 2 + 2?"},
+        {"question": "Who wrote Romeo and Juliet?"},
+        {"question": "What is the largest planet?"},
+    ]
+    ```
+  </Step>
+
+  <Step title="Submit and Wait">
+    Run the batch job:
+
+    ```python
+    import asyncio
+
+    async def run_batch():
+        results = await abatch(predictor, inputs)
+        
+        for i, res in enumerate(results):
+            print(f"Q: {inputs[i]['question']}")
+            print(f"A: {res.prediction.answer}\n")
+
+    asyncio.run(run_batch())
+    ```
+  </Step>
+</Steps>
+
+## Complete Example
+
+```python
+import asyncio
+import dspy
+from modaic.batch import abatch
+from modaic.batch.types import FailedPrediction
+
+async def main():
+    # Configure DSPy
+    dspy.configure(
+        lm=dspy.LM("openai/gpt-4o-mini"),
+        adapter=dspy.ChatAdapter()
+    )
+
+    # Create predictor
+    predictor = dspy.Predict("question -> answer")
+
+    # Prepare inputs
+    inputs = [
+        {"question": "What is the capital of France?"},
+        {"question": "What is 2 + 2?"},
+        {"question": "Who wrote Romeo and Juliet?"},
+    ]
+
+    # Submit batch with progress display
+    results = await abatch(
+        predictor,
+        inputs,
+        show_progress=True,
+        poll_interval=30.0,  # Check status every 30 seconds
+        max_poll_time="1h"    # Wait up to 1 hour
+    )
+
+    # Process results
+    for i, res in enumerate(results):
+        pred = res.prediction
+        if isinstance(pred, FailedPrediction):
+            print(f"[{i}] FAILED: {pred.error}")
+        else:
+            print(f"[{i}] Q: {inputs[i]['question']}")
+            print(f"    A: {pred.answer}")
+
+asyncio.run(main())
+```
+
+## Batch Options
+
+### Progress Display
+
+Show real-time progress (requires `rich`):
+
+```python
+results = await abatch(
+    predictor,
+    inputs,
+    show_progress=True  # Display progress panel
+)
+```
+
+The progress display shows:
+- Batch ID
+- Provider
+- Number of requests
+- Cached requests
+- Status (submitting, in_progress, completed)
+- Progress percentage
+- Elapsed time
+
+### Custom Polling
+
+Control how often status is checked:
+
+```python
+results = await abatch(
+    predictor,
+    inputs,
+    poll_interval=60.0,      # Check every 60 seconds
+    max_poll_time="24h"      # Wait up to 24 hours
+)
+```
+
+Supported time formats:
+- `"30s"` - 30 seconds
+- `"5m"` - 5 minutes
+- `"2h"` - 2 hours
+- `"24h"` - 24 hours (default)
+
+### Status Callbacks
+
+Receive status updates:
+
+```python
+def on_status(batch_id: str, status: str, progress: int, metadata: dict):
+    print(f"Batch {batch_id}: {status} - {progress}%")
+    print(f"Metadata: {metadata}")
+
+results = await abatch(
+    predictor,
+    inputs,
+    status_callback=on_status,
+    show_progress=False  # Disable built-in display
+)
+```
+
+## Advanced: Submit and Track Separately
+
+### Submit Job
+
+Submit a batch and get the ID immediately:
+
+```python
+from modaic.batch import submit_batch_job
+
+async def submit():
+    batch_id = await submit_batch_job(predictor, inputs)
+    print(f"Submitted: {batch_id}")
+    return batch_id
+
+batch_id = asyncio.run(submit())
+```
+
+### Check Status
+
+Check job status later:
+
+```python
+from modaic.batch import aget_batch_status
+
+async def check_status(batch_id: str):
+    status, progress = await aget_batch_status(
+        batch_id,
+        provider="openai",
+        api_key="your-key"  # Optional
+    )
+    print(f"Status: {status}, Progress: {progress}%")
+
+asyncio.run(check_status(batch_id))
+```
+
+### Get Results
+
+Retrieve completed results:
+
+```python
+from modaic.batch import aget_batch_results
+
+async def get_results(batch_id: str):
+    batch_response = await aget_batch_results(
+        batch_id,
+        provider="openai",
+        api_key="your-key"
+    )
+    
+    print(f"Status: {batch_response.status}")
+    print(f"Results: {len(batch_response.results)}")
+    
+    for result in batch_response.results:
+        print(result)
+
+asyncio.run(get_results(batch_id))
+```
+
+### Cancel Job
+
+Cancel a running batch:
+
+```python
+from modaic.batch import acancel_batch
+
+async def cancel(batch_id: str):
+    success = await acancel_batch(
+        batch_id,
+        provider="openai",
+        api_key="your-key"
+    )
+    print(f"Cancelled: {success}")
+
+asyncio.run(cancel(batch_id))
+```
+
+## Adapter Support
+
+### ChatAdapter (Default)
+
+Automatic fallback to JSONAdapter for parsing failures:
+
+```python
+dspy.configure(
+    lm=dspy.LM("openai/gpt-4o-mini"),
+    adapter=dspy.ChatAdapter()  # Default
+)
+
+results = await abatch(predictor, inputs)
+```
+
+<Note>
+BatchChatAdapter automatically retries failed predictions with JSONAdapter. See batch.py:288-344 for implementation.
+</Note>
+
+### JSONAdapter
+
+Strict JSON parsing:
+
+```python
+dspy.configure(
+    lm=dspy.LM("openai/gpt-4o-mini"),
+    adapter=dspy.JSONAdapter()
+)
+
+results = await abatch(predictor, inputs)
+```
+
+## Error Handling
+
+Handle failed predictions:
+
+```python
+from modaic.batch.types import FailedPrediction
+
+results = await abatch(predictor, inputs)
+
+for i, res in enumerate(results):
+    pred = res.prediction
+    
+    if isinstance(pred, FailedPrediction):
+        print(f"Failed at index {pred.index}: {pred.error}")
+        # Handle error - retry, log, etc.
+    else:
+        # Process successful prediction
+        print(f"Success: {pred.answer}")
+```
+
+## Result Structure
+
+Each result is an `ABatchResult` containing:
+
+```python
+class ABatchResult:
+    prediction: dspy.Prediction | FailedPrediction
+    messages: list[dict]  # Formatted messages sent to LM
+```
+
+Access the messages used:
+
+```python
+for res in results:
+    print("Messages sent:")
+    for msg in res.messages:
+        print(f"  {msg['role']}: {msg['content']}")
+    
+    print(f"Prediction: {res.prediction}")
+```
+
+## Cost Optimization
+
+Batch processing typically offers 50% cost reduction:
+
+```python
+# Standard inference (full price)
+results = [predictor(question=q) for q in questions]
+
+# Batch inference (50% discount on OpenAI)
+inputs = [{"question": q} for q in questions]
+results = await abatch(predictor, inputs)
+```
+
+<Tip>
+Providers may also cache responses across batch jobs, further reducing costs. Check the `num_cached` field in status metadata.
+</Tip>
+
+## Multi-Provider Example
+
+```python
+import asyncio
+import dspy
+from modaic.batch import abatch
+
+async def run_openai():
+    dspy.configure(lm=dspy.LM("openai/gpt-4o-mini"))
+    predictor = dspy.Predict("question -> answer")
+    return await abatch(predictor, inputs)
+
+async def run_anthropic():
+    dspy.configure(lm=dspy.LM("anthropic/claude-3-haiku-20240307"))
+    predictor = dspy.Predict("question -> answer")
+    return await abatch(predictor, inputs)
+
+async def main():
+    inputs = [{"question": "What is 2+2?"}] * 10
+    
+    # Run batches in parallel
+    openai_results, anthropic_results = await asyncio.gather(
+        run_openai(),
+        run_anthropic()
+    )
+    
+    print(f"OpenAI results: {len(openai_results)}")
+    print(f"Anthropic results: {len(anthropic_results)}")
+
+asyncio.run(main())
+```
+
+## Troubleshooting
+
+### ValueError: No LM is loaded
+
+Configure DSPy before creating predictors:
+
+```python
+dspy.configure(lm=dspy.LM("openai/gpt-4o-mini"))
+```
+
+### ValueError: Provider does not support batching
+
+Your model's provider doesn't support batch API. Check with:
+
+```python
+from modaic.batch import supports_abatch
+print(supports_abatch("your/model"))
+```
+
+### TimeoutError: Job didn't complete
+
+Increase `max_poll_time`:
+
+```python
+results = await abatch(
+    predictor,
+    inputs,
+    max_poll_time="48h"  # Increase timeout
+)
+```
+
+### Result count mismatch
+
+This shouldn't happen - it indicates a provider API issue. The batch system validates result counts match input counts. See batch.py:247-260.
+
+## Best Practices
+
+1. **Batch size** - Most providers handle thousands of requests efficiently
+2. **Polling interval** - Use 30-60 seconds to balance responsiveness and API calls
+3. **Error handling** - Always check for `FailedPrediction` instances
+4. **Timeouts** - Set realistic `max_poll_time` based on batch size
+5. **Progress tracking** - Use `show_progress=True` for long-running jobs
+
+## Next Steps
+
+- Learn about [observability](/guides/observability) to track batch job performance
+- Explore [loading programs](/guides/loading-programs) to use batch with hub programs
+- See [creating programs](/guides/creating-programs) to build batch-compatible programs

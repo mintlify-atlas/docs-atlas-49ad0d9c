@@ -1,0 +1,226 @@
+---
+title: Predict
+description: API reference for the Predict class and PredictConfig
+---
+
+The Predict module provides the core prediction functionality with support for batch processing, model pushing, and configuration management.
+
+## Predict
+
+```python
+class Predict(PrecompiledProgram, dspy.Predict):
+    def __init__(
+        self,
+        config: ConfigType | SignatureType,
+        lm: Optional[dspy.LM] = None,
+        **lm_kwargs
+    )
+```
+
+A Predict class that extends dspy.Predict with additional features for batch processing, hub integration, and precompiled programs.
+
+<ParamField path="config" type="PredictConfig | dict | dspy.Signature | str" required>
+  A config type (dict or PredictConfig) or a signature type (dspy.Signature or str).
+</ParamField>
+
+<ParamField path="lm" type="dspy.LM">
+  Optional dspy.LM instance to use for predictions.
+</ParamField>
+
+<ParamField path="lm_kwargs" type="dict">
+  Additional keyword arguments to pass to the language model.
+</ParamField>
+
+### Methods
+
+#### abatch
+
+```python
+async def abatch(
+    self,
+    inputs: list[dict],
+    show_progress: bool = True,
+    poll_interval: float = 30,
+    max_poll_time: str = "24h"
+) -> list[dspy.Prediction | FailedPrediction]
+```
+
+Process a batch of inputs asynchronously.
+
+<ParamField path="inputs" type="list[dict]" required>
+  List of input dictionaries for the predictor.
+</ParamField>
+
+<ParamField path="show_progress" type="bool" default="True">
+  Whether to show a progress display while waiting.
+</ParamField>
+
+<ParamField path="poll_interval" type="float" default="30">
+  Seconds between status checks.
+</ParamField>
+
+<ParamField path="max_poll_time" type="str" default="24h">
+  Maximum time to wait for completion (e.g., "30s", "5m", "24h").
+</ParamField>
+
+<ResponseField name="return" type="list[dspy.Prediction | FailedPrediction]">
+  A list of predictions or failed predictions.
+</ResponseField>
+
+**Example:**
+
+```python
+import dspy
+from modaic import Predict
+
+dspy.configure(lm=dspy.LM("openai/gpt-4o-mini"))
+predictor = Predict("question -> answer")
+
+inputs = [
+    {"question": "What is AI?"},
+    {"question": "What is ML?"},
+]
+
+results = await predictor.abatch(inputs)
+for result in results:
+    if isinstance(result, dspy.Prediction):
+        print(result.answer)
+```
+
+#### push_to_hub
+
+```python
+def push_to_hub(
+    self,
+    repo_path: str,
+    access_token: str = None,
+    commit_message: str = "(no commit message)",
+    with_code: Optional[bool] = None,
+    private: bool = False,
+    branch: str = "main",
+    tag: str = None,
+    probe: Optional["ProbeModel"] = None,
+    make_arbiter: bool = False,
+    metadata: dict = None,
+) -> Commit
+```
+
+Push the Predict instance to Modaic Hub.
+
+<ParamField path="repo_path" type="str" required>
+  The repository path on the hub (e.g., "username/model-name").
+</ParamField>
+
+<ParamField path="access_token" type="str">
+  Access token for authentication.
+</ParamField>
+
+<ParamField path="commit_message" type="str" default="(no commit message)">
+  Commit message for this push.
+</ParamField>
+
+<ParamField path="private" type="bool" default="False">
+  Whether to create a private repository.
+</ParamField>
+
+<ParamField path="branch" type="str" default="main">
+  Branch to push to.
+</ParamField>
+
+<ParamField path="tag" type="str">
+  Optional tag for this version.
+</ParamField>
+
+<ParamField path="probe" type="ProbeModel">
+  Optional probe model to include.
+</ParamField>
+
+<ParamField path="make_arbiter" type="bool" default="False">
+  Whether to mark this model as an arbiter.
+</ParamField>
+
+<ParamField path="metadata" type="dict">
+  Additional metadata to include.
+</ParamField>
+
+<ResponseField name="return" type="Commit">
+  A Commit object containing information about the push.
+</ResponseField>
+
+**Example:**
+
+```python
+predictor = Predict("question -> answer")
+commit = predictor.push_to_hub(
+    repo_path="myorg/qa-model",
+    commit_message="Initial version",
+    private=False
+)
+print(f"Pushed to: {commit.url}")
+```
+
+#### update_lm_kwargs
+
+```python
+def update_lm_kwargs(self, **kwargs: Any) -> None
+```
+
+Update the language model keyword arguments.
+
+<ParamField path="kwargs" type="Any">
+  Keyword arguments to update (e.g., temperature, max_tokens).
+</ParamField>
+
+**Example:**
+
+```python
+predictor.update_lm_kwargs(temperature=0.7, max_tokens=100)
+```
+
+#### get_lm_kwargs
+
+```python
+def get_lm_kwargs(self) -> dict
+```
+
+Get the current language model keyword arguments.
+
+<ResponseField name="return" type="dict">
+  Dictionary of current LM kwargs.
+</ResponseField>
+
+**Example:**
+
+```python
+kwargs = predictor.get_lm_kwargs()
+print(f"Current temperature: {kwargs.get('temperature')}")
+```
+
+---
+
+## PredictConfig
+
+```python
+class PredictConfig(PrecompiledConfig):
+    signature: SerializableSignature
+```
+
+Configuration class for Predict instances.
+
+<ParamField path="signature" type="SerializableSignature" required>
+  The signature defining input and output fields for the predictor.
+</ParamField>
+
+**Example:**
+
+```python
+from modaic.programs import PredictConfig
+from modaic.serializers import SerializableSignature
+
+config = PredictConfig(
+    signature=SerializableSignature.from_signature(
+        "question -> answer"
+    )
+)
+predictor = Predict(config)
+```

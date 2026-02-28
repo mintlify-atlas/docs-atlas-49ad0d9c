@@ -1,0 +1,387 @@
+---
+title: Serializers
+description: API reference for SerializableSignature and signature serialization utilities
+---
+
+## SerializableSignature
+
+A Pydantic-compatible annotated type for DSPy signatures that enables automatic serialization and deserialization. This allows DSPy signatures to be used as fields in Pydantic models and configs.
+
+```python
+from modaic.serializers import SerializableSignature
+from pydantic import BaseModel
+import dspy
+
+class MySignature(dspy.Signature):
+    """Answer questions based on context."""
+    context: str = dspy.InputField()
+    question: str = dspy.InputField()
+    answer: str = dspy.OutputField()
+
+class MyConfig(BaseModel):
+    signature: SerializableSignature = MySignature
+```
+
+### Type Annotation
+
+`SerializableSignature` is a type alias defined as:
+
+```python
+SerializableSignature = Annotated[
+    Type[dspy.Signature],
+    BeforeValidator(_deserialize_dspy_signatures),
+    PlainSerializer(lambda s: s.model_json_schema(schema_generator=DSPyTypeSchemaGenerator))
+]
+```
+
+### Usage
+
+#### In Config Classes
+
+```python
+from modaic import PrecompiledConfig
+from modaic.serializers import SerializableSignature
+import dspy
+
+class QASignature(dspy.Signature):
+    """Answer questions."""
+    question: str = dspy.InputField()
+    answer: str = dspy.OutputField()
+
+class MyProgramConfig(PrecompiledConfig):
+    signature: SerializableSignature = QASignature
+    temperature: float = 0.7
+
+# Serialize to dict
+config = MyProgramConfig()
+config_dict = config.to_dict()
+# The signature is automatically serialized to JSON schema
+
+# Deserialize from dict
+config2 = MyProgramConfig.from_dict(config_dict)
+# The signature is automatically reconstructed
+```
+
+#### With Complex Signatures
+
+```python
+import dspy
+from modaic.serializers import SerializableSignature
+from pydantic import BaseModel
+from typing import List
+
+class DocumentSignature(dspy.Signature):
+    """Process documents."""
+    documents: List[str] = dspy.InputField(desc="List of documents")
+    summary: str = dspy.OutputField(desc="Generated summary")
+    keywords: List[str] = dspy.OutputField(desc="Extracted keywords")
+
+class ProcessorConfig(BaseModel):
+    doc_signature: SerializableSignature = DocumentSignature
+    max_docs: int = 10
+```
+
+---
+
+## Serialization Functions
+
+### json_to_type
+
+Deserializes a JSON schema into a Python type.
+
+```python
+from modaic.serializers import json_to_type
+
+json_schema = {
+    "type": "object",
+    "properties": {
+        "name": {"type": "string"},
+        "age": {"type": "integer"}
+    }
+}
+
+python_type = json_to_type(json_schema)
+```
+
+<ParamField path="json_type" type="dict" required>
+  A JSON schema dictionary to deserialize.
+</ParamField>
+
+<ParamField path="defs" type="dict">
+  Optional definitions dictionary for resolving `$ref` references.
+</ParamField>
+
+<ResponseField name="return" type="Type">
+  The corresponding Python type.
+</ResponseField>
+
+#### Supported Type Mappings
+
+**Primitive Types:**
+- `"string"` → `str`
+- `"number"` → `float`
+- `"integer"` → `int`
+- `"boolean"` → `bool`
+- `"null"` → `None`
+
+**Complex Types:**
+- `"array"` → `list`, `set`, or `tuple`
+- `"object"` → `dict`
+- `"anyOf"` → `Union`
+
+**DSPy Special Types:**
+- `dspy.Image`
+- `dspy.Audio`
+- `dspy.History`
+- `dspy.Tool`
+- `dspy.ToolCalls`
+- `dspy.Code`
+
+### Example
+
+```python
+from modaic.serializers import json_to_type
+
+# Array type
+array_schema = {
+    "type": "array",
+    "items": {"type": "string"}
+}
+result = json_to_type(array_schema)  # list[str]
+
+# Object type
+object_schema = {
+    "type": "object",
+    "additionalProperties": {"type": "integer"}
+}
+result = json_to_type(object_schema)  # dict[str, int]
+
+# Union type
+union_schema = {
+    "anyOf": [
+        {"type": "string"},
+        {"type": "integer"}
+    ]
+}
+result = json_to_type(union_schema)  # Union[str, int]
+```
+
+---
+
+## DSPyTypeSchemaGenerator
+
+Custom JSON schema generator for DSPy types. Extends Pydantic's `GenerateJsonSchema` to handle DSPy-specific types like `dspy.Image`, `dspy.Audio`, etc.
+
+```python
+from modaic.serializers import DSPyTypeSchemaGenerator
+import dspy
+
+class MySignature(dspy.Signature):
+    image: dspy.Image = dspy.InputField()
+    caption: str = dspy.OutputField()
+
+schema = MySignature.model_json_schema(
+    schema_generator=DSPyTypeSchemaGenerator
+)
+```
+
+### Handled DSPy Types
+
+The schema generator properly serializes the following DSPy types:
+- `dspy.Image`
+- `dspy.Audio`
+- `dspy.History`
+- `dspy.Tool`
+- `dspy.ToolCalls`
+- `dspy.Code`
+
+Each type is serialized with a custom `type` field in the format `"dspy.{TypeName}"`.
+
+---
+
+## Internal Functions
+
+### _deserialize_dspy_signatures
+
+Deserializes a dictionary into a DSPy signature class. Used internally by `SerializableSignature`.
+
+```python
+from modaic.serializers import _deserialize_dspy_signatures
+import dspy
+
+signature_dict = {
+    "title": "QASignature",
+    "description": "Answer questions",
+    "properties": {
+        "question": {
+            "type": "string",
+            "__dspy_field_type": "input"
+        },
+        "answer": {
+            "type": "string",
+            "__dspy_field_type": "output"
+        }
+    }
+}
+
+signature = _deserialize_dspy_signatures(signature_dict)
+# Returns a DSPy Signature class
+```
+
+<ParamField path="obj" type="dict | Type[dspy.Signature]" required>
+  A dictionary representation of a signature or an existing signature class.
+</ParamField>
+
+<ResponseField name="return" type="Type[dspy.Signature]">
+  A DSPy Signature class.
+</ResponseField>
+
+#### Limitations
+
+Not all signatures can be deserialized:
+- Fields cannot have default factories
+- Frozensets will be serialized to sets
+- Tuples without arguments will be serialized to lists
+
+### _deserialize_dspy_lm
+
+Deserializes a dictionary into a DSPy LM (Language Model) instance.
+
+```python
+from modaic.serializers import _deserialize_dspy_lm
+import dspy
+
+lm_dict = {
+    "model": "gpt-4",
+    "api_key": "sk-...",
+    "temperature": 0.7
+}
+
+lm = _deserialize_dspy_lm(lm_dict)
+# Returns a dspy.LM instance
+```
+
+<ParamField path="lm" type="dict | dspy.LM" required>
+  A dictionary containing LM configuration or an existing LM instance.
+</ParamField>
+
+<ResponseField name="return" type="dspy.LM">
+  A DSPy LM instance.
+</ResponseField>
+
+---
+
+## Helper Functions
+
+### _handle_any_of
+
+Deserializes `anyOf` JSON schema into a Union type.
+
+```python
+schema = {
+    "anyOf": [
+        {"type": "string"},
+        {"type": "integer"}
+    ]
+}
+result = _handle_any_of(schema)  # Union[str, int]
+```
+
+### _handle_object
+
+Deserializes object JSON schema into dict types.
+
+```python
+schema = {
+    "type": "object",
+    "additionalProperties": {"type": "string"}
+}
+result = _handle_object(schema)  # dict[str, str]
+```
+
+### _handle_array
+
+Deserializes array JSON schema into list, set, or tuple types.
+
+```python
+# List type
+schema = {
+    "type": "array",
+    "items": {"type": "integer"}
+}
+result = _handle_array(schema)  # list[int]
+
+# Set type
+schema = {
+    "type": "array",
+    "items": {"type": "string"},
+    "uniqueItems": True
+}
+result = _handle_array(schema)  # set[str]
+```
+
+### _handle_custom_type
+
+Deserializes custom types defined in `$defs` into DSPy special types and BaseModels.
+
+```python
+ref = "#/$defs/CustomType"
+defs = {
+    "CustomType": {
+        "type": "object",
+        "properties": {
+            "field1": {"type": "string"},
+            "field2": {"type": "integer"}
+        }
+    }
+}
+result = _handle_custom_type(ref, defs)
+# Returns a Pydantic model with field1: str and field2: int
+```
+
+---
+
+## Complete Example
+
+Here's a complete example showing how to use `SerializableSignature` in a real program:
+
+```python
+import dspy
+from modaic import PrecompiledProgram, PrecompiledConfig
+from modaic.serializers import SerializableSignature
+from typing import List
+
+# Define a custom signature
+class RAGSignature(dspy.Signature):
+    """Answer questions using retrieved context."""
+    context: List[str] = dspy.InputField(desc="Retrieved documents")
+    question: str = dspy.InputField(desc="User question")
+    answer: str = dspy.OutputField(desc="Generated answer")
+    confidence: float = dspy.OutputField(desc="Confidence score")
+
+# Use it in a config
+class RAGConfig(PrecompiledConfig):
+    signature: SerializableSignature = RAGSignature
+    retrieval_k: int = 5
+    temperature: float = 0.7
+
+# Create a program
+class RAGProgram(PrecompiledProgram):
+    config: RAGConfig
+    
+    def __init__(self, config=None):
+        super().__init__(config)
+        # The signature is available and properly typed
+        self.predictor = dspy.Predict(self.config.signature)
+    
+    def forward(self, question, context):
+        return self.predictor(question=question, context=context)
+
+# Save and load
+config = RAGConfig()
+config.save_precompiled("./my-rag")
+
+# The signature is serialized and can be loaded back
+loaded_config = RAGConfig.from_precompiled("./my-rag")
+program = RAGProgram(config=loaded_config)
+```

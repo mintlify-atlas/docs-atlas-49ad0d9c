@@ -1,0 +1,234 @@
+---
+title: Precompiled programs
+description: Learn how to create and manage precompiled DSPy programs with PrecompiledProgram and PrecompiledConfig
+---
+
+Precompiled programs are the foundation of Modaic's approach to building and maintaining DSPy applications. They provide a structured way to define, configure, and persist your DSPy programs.
+
+## PrecompiledProgram
+
+`PrecompiledProgram` is the base class for all Modaic programs. It extends `dspy.Module` and adds functionality for configuration management, serialization, and hub integration.
+
+### Class signature
+
+```python
+class PrecompiledProgram(dspy.Module):
+    config: PrecompiledConfig
+    retriever: Optional[Retriever]
+    _source: Path = None
+    _source_commit: Optional[Commit] = None
+    _from_auto: bool = False
+```
+
+### Creating a program
+
+To create a precompiled program, extend `PrecompiledProgram` and define your program logic:
+
+```python
+import dspy
+from modaic import PrecompiledProgram, PrecompiledConfig
+
+class MyProgramConfig(PrecompiledConfig):
+    temperature: float = 0.7
+    max_tokens: int = 1000
+
+class MyProgram(PrecompiledProgram):
+    config: MyProgramConfig
+    
+    def __init__(self, config: MyProgramConfig = None, **kwargs):
+        super().__init__(config, **kwargs)
+        self.predictor = dspy.Predict("question -> answer")
+        
+    def forward(self, question: str) -> str:
+        return self.predictor(question=question)
+```
+
+### Key methods
+
+<Steps>
+
+<Step title="Initialize with configuration">
+The constructor accepts a config object that controls the program's behavior:
+
+```python
+program = MyProgram(config=MyProgramConfig(temperature=0.5))
+```
+
+You can also pass configuration as a dictionary:
+
+```python
+program = MyProgram(config={"temperature": 0.5, "max_tokens": 500})
+```
+</Step>
+
+<Step title="Save locally">
+Save your program and configuration to a local directory:
+
+```python
+program.save_precompiled("./my_program")
+```
+
+This creates:
+- `program.json` - The serialized program state
+- `config.json` - The configuration settings
+</Step>
+
+<Step title="Load from disk">
+Load a saved program from a local path:
+
+```python
+program = MyProgram.from_precompiled(
+    "./my_program",
+    config={"temperature": 0.8},  # Optional overrides
+    api_key="your-api-key"
+)
+```
+</Step>
+
+<Step title="Push to Modaic Hub">
+Share your program on Modaic Hub:
+
+```python
+commit = program.push_to_hub(
+    repo_path="username/my-program",
+    access_token="your-token",
+    commit_message="Initial version",
+    with_code=True,  # Include source code
+    private=False,
+    branch="main",
+    tag="v1.0.0"  # Optional version tag
+)
+```
+</Step>
+
+</Steps>
+
+## PrecompiledConfig
+
+`PrecompiledConfig` is a Pydantic model that defines the configuration schema for your program. It provides serialization, validation, and version control for your program's settings.
+
+### Class signature
+
+```python
+class PrecompiledConfig(BaseModel):
+    model: Optional[str] = None  # Deprecated
+```
+
+### Defining custom configurations
+
+Extend `PrecompiledConfig` to define your program's configuration schema:
+
+```python
+from modaic import PrecompiledConfig
+
+class TableRAGConfig(PrecompiledConfig):
+    k_recall: int = 50
+    k_rerank: int = 5
+    temperature: float = 0.7
+    embedding_model: str = "text-embedding-3-small"
+```
+
+<Info>
+Use Pydantic's validation features to add constraints, default values, and type checking to your configuration.
+</Info>
+
+### Configuration methods
+
+#### Save configuration
+
+```python
+config = MyProgramConfig(temperature=0.5)
+config.save_precompiled("./my_config")
+```
+
+#### Load configuration
+
+Load from a local path or Modaic Hub:
+
+```python
+config = MyProgramConfig.from_precompiled(
+    "username/my-program",
+    access_token="your-token",
+    rev="main",  # Branch, tag, or commit SHA
+    temperature=0.8  # Override specific values
+)
+```
+
+#### Convert to/from dictionary
+
+```python
+# To dictionary
+config_dict = config.to_dict()
+
+# From dictionary
+config = MyProgramConfig.from_dict(config_dict)
+```
+
+#### Convert to/from JSON
+
+```python
+# To JSON string
+json_str = config.to_json()
+
+# From JSON file
+config = MyProgramConfig.from_json("./config.json")
+```
+
+## DSPy signature serialization
+
+`PrecompiledConfig` automatically handles serialization of DSPy `Signature` classes in your configuration:
+
+```python
+import dspy
+from modaic import PrecompiledConfig
+
+class MySignature(dspy.Signature):
+    question: str = dspy.InputField()
+    answer: str = dspy.OutputField()
+
+class MyConfig(PrecompiledConfig):
+    signature: Type[dspy.Signature] = MySignature
+
+config = MyConfig()
+config_dict = config.to_dict()  # Signature is serialized as module path
+```
+
+When saved, DSPy signatures are stored as importable module paths like `"__dspy_signature__:mymodule.MySignature"` and automatically reconstructed when loaded.
+
+<Warning>
+When using custom DSPy signatures in your config, ensure they are defined in importable modules, not in `__main__`.
+</Warning>
+
+## Working with retrievers
+
+`PrecompiledProgram` supports integration with retriever components:
+
+```python
+from modaic import PrecompiledProgram, Retriever, PrecompiledConfig
+
+class MyRetriever(Retriever):
+    config: PrecompiledConfig
+    
+    def retrieve(self, query: str, **kwargs):
+        # Implement retrieval logic
+        return results
+
+retriever = MyRetriever(config=PrecompiledConfig())
+program = MyProgram(
+    config=MyProgramConfig(),
+    retriever=retriever
+)
+```
+
+The retriever is automatically saved and loaded with the program.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Auto programs" icon="wand-magic-sparkles" href="/concepts/auto-programs">
+    Learn about dynamic loading with AutoProgram
+  </Card>
+  <Card title="Hub operations" icon="cloud-arrow-up" href="/concepts/hub-operations">
+    Master version control and sharing
+  </Card>
+</CardGroup>
