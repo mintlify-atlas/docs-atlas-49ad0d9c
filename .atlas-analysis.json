@@ -1,0 +1,117 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "Modaic",
+  "projectDescription": "Python SDK for composing and maintaining DSPy applications with versioning and hub support",
+  "theme": "palm",
+  "primaryColor": "#8800c2",
+  "lightColor": "#cc8c98",
+  "darkColor": "#6600a0",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/precompiled-programs",
+              "concepts/auto-programs",
+              "concepts/configuration",
+              "concepts/hub-operations"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/creating-programs",
+              "guides/loading-programs",
+              "guides/bundling-and-sharing",
+              "guides/batch-processing",
+              "guides/observability"
+            ]
+          },
+          {
+            "group": "Examples",
+            "pages": [
+              "examples/sentiment-analysis",
+              "examples/batch-inference",
+              "examples/table-rag"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core SDK",
+            "pages": [
+              "api/precompiled",
+              "api/auto",
+              "api/serializers"
+            ]
+          },
+          {
+            "group": "Client",
+            "pages": [
+              "api/client",
+              "api/arbiter",
+              "api/config"
+            ]
+          },
+          {
+            "group": "Batch",
+            "pages": [
+              "api/batch"
+            ]
+          },
+          {
+            "group": "Programs",
+            "pages": [
+              "api/programs/predict",
+              "api/programs/registry"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Hub Support - Load and share precompiled DSPy programs from Modaic Hub",
+    "PrecompiledProgram Framework - Statically defined programs with explicit configuration",
+    "AutoProgram - Dynamically load programs from hub or local repositories",
+    "Version Control - Track changes to code, LM config, and compiled prompts",
+    "Batch Processing - Support for batch inference with multiple providers",
+    "Automated LM Judge Alignment - Continuously align LM judges to your preferences",
+    "Experiment Reproducibility - Save everything needed to reproduce optimization runs"
+  ],
+  "publicApiSurface": [
+    "PrecompiledProgram",
+    "PrecompiledConfig",
+    "AutoProgram",
+    "AutoConfig",
+    "AutoRetriever",
+    "Retriever",
+    "Indexer",
+    "ModaicClient",
+    "Arbiter",
+    "configure",
+    "track",
+    "get_modaic_client",
+    "SerializableSignature",
+    "Predict",
+    "PredictConfig",
+    "abatch",
+    "submit_batch_job",
+    "aget_batch_results",
+    "acancel_batch"
+  ]
+}
